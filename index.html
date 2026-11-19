@@ -3,143 +3,179 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>13번째 방문자 (The 13th Visitor) v1.2.0</title>
-  <link rel="stylesheet" href="style.css?v=1.2.0" />
+  <title>13번째 방문자 (The 13th Visitor) v1.4.0</title>
+  <link rel="stylesheet" href="style.css?v=1.4.0" />
 </head>
 <body>
   <!-- 타이틀 오버레이 -->
   <div id="title-overlay">
     <div class="title-card">
-      <div class="title-badge">16-BIT KOREAN OCCULT MYSTERY RPG · v1.2.0</div>
+      <div class="title-badge">16-BIT KOREAN OCCULT MYSTERY RPG · <span data-app-version>v1.4.0</span></div>
       <h1 class="game-title">13번째 방문자</h1>
       <p class="game-subtitle">
         1985년 10월 13일 밤 11시 47분, 준공 도면에 없는 은하아파트 13층에서 사라진 일가족.<br />
-        13년 뒤 그날의 생존자 강현우가 되어 1304호의 진실을 추적하라.
+        13년 뒤, 정체불명의 노크 소리가 이어지는 1304호의 진실을 추적하라.
       </p>
       <div id="save-preview" class="save-preview">저장된 데이터 확인 중...</div>
       <div class="title-buttons">
-        <button class="primary-btn" onclick="startNewGameFromTitle()">새 게임 시작 (프롤로그 포함)</button>
-        <button id="btn-title-load" onclick="continueFromTitle()" disabled>이어하기 (저장 불러오기)</button>
-        <button onclick="openEndingGallery()">엔딩 도감 확인</button>
+        <button id="btn-title-new" class="primary-btn">새 게임 시작 (프롤로그 포함)</button>
+        <button id="btn-title-load" disabled>이어하기 (저장 불러오기)</button>
+        <button id="btn-title-gallery">엔딩 도감 확인</button>
       </div>
       <div id="ending-gallery-box" class="ending-gallery-box" style="display:none;"></div>
       <div class="title-controls-help">
-        이동: <strong>WASD / 방향키</strong> · 질주: <strong>Shift</strong> · 조사/대화: <strong>E / Space</strong> · 은신: <strong>H</strong> · 단서 조합: <strong>C</strong> · 미니맵: <strong>M</strong>
+        이동: <strong>WASD / 방향키</strong> · 질주: <strong>Shift</strong> · 조사/대화: <strong>E / Space</strong> · 은신/숨참기: <strong>H / Space</strong> · 수사수첩: <strong>Tab</strong> · 안정제: <strong>Q</strong>
       </div>
     </div>
   </div>
 
-  <!-- 메인 게임 컨테이너 -->
-  <div class="app-shell">
-    <header class="top-bar">
-      <div class="top-left">
-        <span class="version-pill">v1.2.0</span>
-        <span id="top-location">장소: 은하아파트 1층 복도</span>
+  <!-- 프롤로그 오버레이 -->
+  <div id="prologue-overlay">
+    <div class="prologue-card">
+      <div class="prologue-top">
+        <span id="prologue-chapter">PROLOGUE 01</span>
+        <span id="prologue-page">1 / 4</span>
       </div>
-      <div class="top-right">
-        <span id="clock-display" class="clock-pill">1998년 10월 13일 23:47</span>
-        <button id="btn-minimap" class="top-btn" onclick="toggleMinimap()">미니맵: ON (M)</button>
-        <button id="btn-sound" class="top-btn" onclick="toggleSound()">사운드: ON</button>
-        <button class="top-btn" onclick="saveGame()">저장</button>
-        <button class="top-btn" onclick="loadGame()">불러오기</button>
-        <button class="top-btn" onclick="returnToTitle()">타이틀</button>
+      <div class="prologue-title" id="prologue-title">도면에 존재하지 않는 층</div>
+      <div class="prologue-body-row">
+        <canvas id="prologue-art-canvas" width="160" height="110"></canvas>
+        <div id="prologue-text"></div>
       </div>
-    </header>
-
-    <main class="main-grid">
-      <!-- 좌측: 게임 화면 + 대화창 + 모바일/마우스 조작 패드 -->
-      <section class="left-column">
-        <div class="canvas-wrap">
-          <canvas id="screen" width="640" height="360"></canvas>
-          <div id="flicker-banner" class="alert-banner flicker-alert" style="display:none;">
-            ⚡ 형광등 점멸 경고! 은신처에서 [H]로 숨거나 문을 통해 다른 구역으로 벗어나세요!
-          </div>
-          <div id="danger-banner" class="alert-banner danger-alert" style="display:none;">
-            ⚠ 정전 & 원혼 추격 중! 은신하거나 안전한 구역으로 도망치세요!
-          </div>
-        </div>
-
-        <!-- 대화 및 조사 메시지 박스 -->
-        <div class="dialogue-box">
-          <div id="speaker" class="c-system">SYSTEM</div>
-          <div id="message" class="c-npc">수사를 시작합니다.</div>
-          <div id="choices" class="choices-wrap"></div>
-        </div>
-
-        <!-- 하단 조작 보조 바 -->
-        <div class="control-bar">
-          <div class="dpad">
-            <button onpointerdown="setPadDir('up', true)" onpointerup="setPadDir('up', false)" onpointerleave="setPadDir('up', false)">▲</button>
-            <button onpointerdown="setPadDir('left', true)" onpointerup="setPadDir('left', false)" onpointerleave="setPadDir('left', false)">◀</button>
-            <button onpointerdown="setPadDir('down', true)" onpointerup="setPadDir('down', false)" onpointerleave="setPadDir('down', false)">▼</button>
-            <button onpointerdown="setPadDir('right', true)" onpointerup="setPadDir('right', false)" onpointerleave="setPadDir('right', false)">▶</button>
-          </div>
-          <div class="action-buttons">
-            <button class="act-btn" onclick="interact()">조사 / 대화 [E]</button>
-            <button class="act-btn" onclick="toggleHide()">숨기 / 나오기 [H]</button>
-            <button id="btn-use-sedative" class="act-btn" onclick="useConsumable('sedative')">신경안정제 [1] (1)</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- 우측: 상태 HUD + 수사 수첩(단서/조합) + 소지품 + 현장 로그 -->
-      <aside class="right-column">
-        <div class="panel">
-          <div class="panel-title">수사관 상태 · 구역 조명</div>
-          <div class="stat-row">
-            <span>정신력</span>
-            <span id="sanity-text">100 / 100</span>
-          </div>
-          <div class="bar-bg"><div id="sanity-bar" class="bar-fill" style="width:100%;"></div></div>
-          <div id="sanity-status" class="stat-sub">심리 안정 상태</div>
-
-          <div class="stat-row" style="margin-top:8px;">
-            <span>형광등 상태</span>
-            <span id="light-text">정상 점등</span>
-          </div>
-          <div class="bar-bg"><div id="light-bar" class="bar-fill" style="width:100%;"></div></div>
-          <div id="light-status" class="stat-sub">형광등 점등 (불이 깜빡이면 은신 또는 구역 이탈)</div>
-
-          <div class="stat-row" style="margin-top:8px;">
-            <span>지구력 (Shift 질주)</span>
-            <span id="stamina-text">100%</span>
-          </div>
-          <div class="bar-bg"><div id="stamina-bar" class="bar-fill stamina-fill" style="width:100%;"></div></div>
-
-          <div class="meta-box">
-            <div>현재 상태: <strong id="state-text">수사 진행 중</strong></div>
-            <div id="progress-text">단서 0/12 · 진실 0/7</div>
-            <div id="prop-tracker">환경 단서 조사: 0 / 8</div>
-            <div id="ending-tracker">달성 엔딩: 0 / 3</div>
-          </div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-header-flex">
-            <span class="panel-title">수사 수첩 (단서 2개 선택 후 조합)</span>
-            <div>
-              <button class="mini-btn" onclick="combineSelectedClues()">단서 조합 [C]</button>
-              <button class="mini-btn" onclick="openDeductionSummary()">요약 [I]</button>
-            </div>
-          </div>
-          <div id="clue-list" class="clue-list">수집한 단서가 없습니다.</div>
-          <div class="sub-label">도출된 핵심 진실</div>
-          <div id="deduction-list" class="deduction-list">아직 조합으로 밝혀낸 진실이 없습니다.</div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-title">소지품</div>
-          <div id="item-bag"></div>
-        </div>
-
-        <div class="panel">
-          <div class="panel-title">현장 수사 로그</div>
-          <div id="event-log" class="event-log"></div>
-        </div>
-      </aside>
-    </main>
+      <div class="prologue-actions">
+        <button class="prologue-btn" id="btn-prologue-skip">건너뛰기 [ESC]</button>
+        <button class="prologue-btn prologue-btn-primary" id="btn-prologue-next">다음 ▶ [Space]</button>
+      </div>
+    </div>
   </div>
 
-  <script src="game.js?v=1.2.0"></script>
+  <!-- 기억 회상 컷신 오버레이 -->
+  <div id="flashback-overlay">
+    <div class="flashback-card">
+      <div class="prologue-top">
+        <span id="flashback-chapter">MEMORY FLASHBACK</span>
+        <span>TRUTH UNLOCKED</span>
+      </div>
+      <div class="prologue-title" id="flashback-title">기억의 조각</div>
+      <div class="prologue-body-row">
+        <canvas id="flashback-art-canvas" width="160" height="110"></canvas>
+        <div id="flashback-text"></div>
+      </div>
+      <div class="prologue-actions" style="justify-content:flex-end;">
+        <button class="prologue-btn prologue-btn-primary" id="btn-flashback-close">기억을 새기고 수사 계속 ▶ [Space]</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 캔버스 중심 몰입형 메인 게임 뷰포트 -->
+  <div class="stage-shell">
+    <div class="canvas-stage">
+      <canvas id="screen" width="640" height="360"></canvas>
+
+      <!-- 상단 최소 HUD 오버레이 -->
+      <div class="hud-top-bar">
+        <div class="hud-stats">
+          <span class="version-pill" data-app-version>v1.4.0</span>
+          <span id="hud-location" class="hud-loc">은하아파트 · 1층 복도</span>
+          <div class="mini-meter" title="정신력">
+            <span>정신력</span>
+            <div class="mini-bar-bg"><div id="sanity-bar" class="mini-bar-fill" style="width:100%;"></div></div>
+            <strong id="sanity-text">100</strong>
+          </div>
+          <div class="mini-meter" title="지구력">
+            <span>지구력</span>
+            <div class="mini-bar-bg"><div id="stamina-bar" class="mini-bar-fill stamina" style="width:100%;"></div></div>
+            <strong id="stamina-text">100%</strong>
+          </div>
+        </div>
+
+        <div class="hud-actions">
+          <button id="btn-notebook" class="hud-btn accent">수사 수첩 · 소지품 [Tab]</button>
+          <button id="btn-minimap" class="hud-btn">미니맵: ON</button>
+          <button id="btn-sound" class="hud-btn">사운드: ON</button>
+          <button id="btn-save" class="hud-btn">저장</button>
+          <button id="btn-load" class="hud-btn">불러오기</button>
+          <button id="btn-title" class="hud-btn">타이틀</button>
+        </div>
+      </div>
+
+      <!-- 위기 경고 배너 -->
+      <div id="flicker-banner" class="alert-banner flicker-alert" style="display:none;">
+        ⚡ 형광등 점멸 경고! 시야 밖 은신처에서 [H]로 숨거나 문을 통해 벗어나세요!
+      </div>
+      <div id="danger-banner" class="alert-banner danger-alert" style="display:none;">
+        ⚠ 정전 & 13번째 방문자 추격 중! 은신 후 [Space]로 숨을 참거나 두 구역 이상 도주하세요!
+      </div>
+
+      <!-- 캔버스 하단 오버레이 대화창 -->
+      <div class="dialogue-overlay">
+        <div id="dialogue-visual-row">
+          <div id="portrait-frame">
+            <canvas id="portrait-canvas" width="68" height="68"></canvas>
+            <div id="portrait-role">SYSTEM</div>
+          </div>
+          <div id="dialogue-text-col">
+            <div id="speaker" class="c-system">SYSTEM</div>
+            <div id="message" class="c-npc">수사를 시작합니다.</div>
+          </div>
+        </div>
+        <div id="tutorial-banner"></div>
+        <div id="choices" class="choices-wrap"></div>
+      </div>
+    </div>
+
+    <!-- 하단 컴팩트 조작 바 -->
+    <div class="control-bar">
+      <div class="dpad">
+        <button data-pad="up">▲</button>
+        <button data-pad="left">◀</button>
+        <button data-pad="down">▼</button>
+        <button data-pad="right">▶</button>
+      </div>
+      <div class="action-buttons">
+        <button id="btn-act-interact" class="act-btn">조사 / 대화 [E]</button>
+        <button id="btn-act-hide" class="act-btn">숨기 / 나오기 [H]</button>
+        <button id="btn-use-sedative" class="act-btn">안정제 [Q] (1)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab 키로 여닫는 슬라이드 오버레이 수사 수첩 드로어 -->
+  <aside id="notebook-drawer" class="notebook-drawer">
+    <div class="drawer-header">
+      <div>
+        <strong>수사 수첩 · 현장 기록</strong>
+        <span id="progress-text" class="drawer-sub">단서 0/12 · 진실 0/7</span>
+      </div>
+      <button id="btn-drawer-close" class="hud-btn">닫기 [Tab / ESC]</button>
+    </div>
+
+    <div class="drawer-body">
+      <div class="panel">
+        <div class="panel-header-flex">
+          <span class="panel-title">수집 단서 (2개 선택 후 조합)</span>
+          <button id="btn-combine" class="mini-btn">단서 조합 [C]</button>
+        </div>
+        <div id="clue-list" class="clue-list">수집한 단서가 없습니다.</div>
+        <div class="sub-label">도출된 핵심 진실</div>
+        <div id="deduction-list" class="deduction-list">아직 조합으로 밝혀낸 진실이 없습니다.</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">소지품 · 진행 현황</div>
+        <div id="item-bag"></div>
+        <div class="meta-box">
+          <div id="prop-tracker">환경 조사: 0/8</div>
+          <div id="ending-tracker">달성 엔딩: 0/3</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">현장 수사 로그</div>
+        <div id="event-log" class="event-log"></div>
+      </div>
+    </div>
+  </aside>
+
+  <script type="module" src="js/main.js?v=1.4.0"></script>
 </body>
 </html>

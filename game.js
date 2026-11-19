@@ -1,11 +1,12 @@
 /* =========================================================================
-   《13번째 방문자》 v1.2.0 - 한국형 16비트 픽셀 공포 추리 RPG
-   (프롤로그 · 순차 튜토리얼 · 포트레이트 일러스트 · 키워드 강조 · 은신/도주 밸런스)
+   《13번째 방문자》 v1.3.0 - 한국형 16비트 픽셀 공포 추리 RPG
+   (반전 비공개 서사 · 질문형 추리 게이트 · BFS 추격 AI · 기억 회상 컷신 · IME 대응)
    ========================================================================= */
 
 /* -------------------------------------------------------------------------
    1. 레트로 Web Audio 사운드 & 오컬트 앰비언트 BGM 시스템
    ------------------------------------------------------------------------- */
+const GAME_VERSION = (typeof window !== "undefined" && window.APP_VERSION) ? window.APP_VERSION : "1.3.0";
 let soundEnabled = true;
 let audioCtx = null;
 let bgmTimer = null;
@@ -85,7 +86,7 @@ function playTone(freq, type, duration, vol = 0.08, slideTo = null) {
 function playSfx(kind) {
   if (!soundEnabled) return;
   if (kind === "step") playTone(115, "triangle", 0.05, 0.032, 72);
-  else if (kind === "bump") playTone(82, "square", 0.04, 0.02, 60);
+  else if (kind === "bump") playTone(82, "square", 0.09, 0.04, 52);
   else if (kind === "door") playTone(165, "sawtooth", 0.22, 0.07, 65);
   else if (kind === "switch") playTone(680, "square", 0.05, 0.04, 420);
   else if (kind === "flicker") {
@@ -103,6 +104,10 @@ function playSfx(kind) {
     playTone(440, "triangle", 0.12, 0.09);
     setTimeout(() => playTone(554, "triangle", 0.12, 0.09), 100);
     setTimeout(() => playTone(659, "triangle", 0.25, 0.1), 200);
+  } else if (kind === "flashback") {
+    playTone(330, "sine", 0.22, 0.09, 440);
+    setTimeout(() => playTone(494, "sine", 0.25, 0.09, 659), 180);
+    setTimeout(() => playTone(880, "triangle", 0.45, 0.08), 380);
   } else if (kind === "ghost") {
     playTone(92, "sawtooth", 0.65, 0.14, 40);
     setTimeout(() => playTone(760, "sine", 0.45, 0.06, 200), 120);
@@ -115,20 +120,20 @@ function playSfx(kind) {
 }
 
 /* -------------------------------------------------------------------------
-   2. 프롤로그(도입부) & 순차 튜토리얼 데이터
+   2. 프롤로그(반전 비공개), 기억 회상 컷신 & 상황 트리거 튜토리얼 데이터
    ------------------------------------------------------------------------- */
 const PROLOGUE_SCENES = [
   {
     chapter: "PROLOGUE 01 · 1985년 10월 13일 23:47",
     title: "도면에 존재하지 않는 층",
     art: "apt_night",
-    text: "1985년 10월 13일 밤 11시 47분.\n서울 외곽의 노후 아파트 단지 [[gold:은하아파트]]에서 일가족 네 명이 흔적도 없이 사라졌다.\n준공 도면상 건물은 [[gold:12층]]까지만 존재했지만, 생존자의 증언 속 사건 현장은 [[red:13층 1304호]]였다."
+    text: "1985년 10월 13일 밤 11시 47분.\n서울 외곽의 신축 단지 [[gold:은하아파트]]에서 일가족 네 명이 흔적도 없이 사라졌다.\n준공 도면상 건물은 [[gold:12층]]까지만 존재했지만, 사건 현장은 도면 밖의 [[red:13층 1304호]]였다."
   },
   {
-    chapter: "PROLOGUE 02 · 봉인된 기억",
-    title: "유일한 생존자",
+    chapter: "PROLOGUE 02 · 봉인된 기록",
+    title: "기록에서 지워진 생존자",
     art: "corridor_13",
-    text: "그날 밤 현장에 출동했던 순경은 실종되었고, 비상구 앞에 쓰러져 있던 열다섯 살 소년만이 홀로 구조되었다.\n극심한 충격으로 그날의 기억을 잃은 소년은 세월이 흘러 신입 형사 [[blue:강현우]]가 되었다."
+    text: "그날 밤 현장에 출동했던 선임 순경은 실종되었고, 비상구 앞에 쓰러져 있던 열다섯 살 소년만이 홀로 구조되었다.\n극심한 충격으로 그날의 기억을 잃은 소년의 이름은 수사 기록에서 지워진 채 사건은 미제로 봉인되었다."
   },
   {
     chapter: "PROLOGUE 03 · 1998년 10월 13일 23:47",
@@ -140,35 +145,50 @@ const PROLOGUE_SCENES = [
     chapter: "PROLOGUE 04 · 수사 개시",
     title: "은하아파트 1층 로비",
     art: "detective_arrive",
-    text: "기시감에 이끌려 홀로 아파트를 찾은 [[blue:강현우]].\n현관문이 닫히는 소리와 함께 로비의 시계가 [[gold:23:47]]에서 멈춰 섰다.\n이제 제한 시간 없이 단서를 모으고 조합해, [[red:13번째 방문자]]의 진실을 밝혀야 한다."
+    text: "설명할 수 없는 기시감에 이끌려 홀로 아파트를 찾은 신입 형사 [[blue:강현우]].\n현관문이 닫히는 소리와 함께 로비의 시계가 [[gold:23:47]]에서 멈춰 섰다.\n이제 단서를 모으고 조합해, [[red:13번째 방문자]]의 진실을 밝혀야 한다."
   }
 ];
+
+const FLASHBACK_SCENES = {
+  past: {
+    chapter: "MEMORY FLASHBACK · 1985.10.13 23:47",
+    title: "봉인된 기억의 복원 — 비상구 앞의 소년",
+    art: "memory_rescue",
+    text: "번진 잉크 너머의 이름 [[blue:강현우]]와 방문자 명부의 마지막 줄이 하나로 겹쳐진다.\n1985년 그날 밤, 선임 강 순경의 손을 잡고 13층으로 올라갔던 15세 소년은 바로 [[blue:나 자신]]이었다.\n광기에 잠식된 아버지로부터 [[blue:윤서]]를 구하려다 비상구 앞에 쓰러졌던 그날의 기억이 되살아난다."
+  },
+  yoonseo: {
+    chapter: "MEMORY FLASHBACK · 1985.10.13 23:45",
+    title: "1304호의 마지막 밤 — 소녀 윤서",
+    art: "memory_yoonseo",
+    text: "사진 창문에 비친 기이한 그림자와 진료 기록의 조각이 맞물린다.\n[[blue:윤서]]는 사람들을 해치는 악령이 아니라, 문밖을 두드리는 광기 어린 [[red:13번째 방문자]]를 피해 벽장 뒤에서 구조를 기다리다 멈춘 시간에 갇힌 소녀였다."
+  }
+};
 
 const TUTORIAL_STEPS = [
   {
     step: 1,
     title: "튜토리얼 1/4 · 이동 및 전력 질주",
-    text: "[[blue:방향키(↑↓←→)]] 또는 [[blue:WASD]]로 이동하고, [[blue:Shift]] 키를 누른 채 이동하면 전력 질주합니다.\n먼저 복도를 한 걸음 이동해 보세요. (또는 아래 [다음 단계] 클릭)"
+    text: "[[blue:방향키(↑↓←→)]] 또는 [[blue:WASD]]로 이동하고, [[blue:Shift]] 키를 누른 채 이동하면 전력 질주합니다.\n한글 입력 상태에서도 동일하게 작동합니다."
   },
   {
     step: 2,
     title: "튜토리얼 2/4 · 주변 단서 및 인물 조사",
-    text: "반짝이는 노란색 [[gold:[!]]] 표식이나 흰색 소품, 주민 앞에서 [[blue:E]] 또는 [[blue:Space]] 키를 누르면 조사 및 대화가 진행됩니다.\n주변 사물을 한 번 조사해 보세요."
+    text: "반짝이는 노란색 [[gold:[!]]] 표식이나 흰색 소품, 주민 앞에서 [[blue:E]] 또는 [[blue:Space]] 키를 누르면 조사 및 대화가 진행됩니다."
   },
   {
     step: 3,
-    title: "튜토리얼 3/4 · 수사 수첩 단서 조합",
-    text: "수집한 단서들은 우측 [[gold:수사 수첩]]에 기록됩니다.\n각 단서 아래에 적힌 [[mint:연관 단서 힌트]]를 참고해 단서 2개를 클릭한 뒤 [[blue:[단서 조합 (C)]]]을 누르면 새로운 진실이 해금됩니다."
+    title: "튜토리얼 3/4 · 수사 수첩 추리 조합",
+    text: "단서가 2개 이상 모였습니다. 우측 [[gold:수사 수첩]]에서 각 단서의 [[mint:추리 질문]]을 읽고 서로 연결되는 단서 2개를 선택한 뒤 [[blue:[단서 조합 (C)]]]을 누르세요.\n(단, 억지 조합 시 정신력이 5 감소합니다.)"
   },
   {
     step: 4,
     title: "튜토리얼 4/4 · 형광등 점멸과 은신 · 구역 이탈",
-    text: "천장 형광등이 [[red:불규칙하게 깜빡이면(10초 유예)]] 원혼이 나타난다는 전조입니다.\n가까운 캐비닛·장롱에서 [[blue:[H]]] 키로 [[mint:은신]]하거나, 은신처가 없는 방이라면 [[red:문을 통해 다른 구역으로 빠르게 벗어나세요!]]"
+    text: "천장 형광등이 [[red:불규칙하게 깜빡이면(10초 유예)]] 추격자가 나타납니다.\n시야 밖에서 은신처에 [[blue:[H]]]로 숨거나, [[red:문을 두 번 이상 통과해 다른 구역으로 따돌리세요!]]"
   }
 ];
 
 /* -------------------------------------------------------------------------
-   3. 게임 데이터 (단서 12종 + 조합 힌트, 증거 조합 7종, 필드 아이템 5종, 소품 8종)
+   3. 게임 데이터 (질문형 추리 단서 12종, 증거 조합 7종, 아이템 5종, 소품 8종)
    ------------------------------------------------------------------------- */
 const CLUES = [
   {
@@ -176,9 +196,10 @@ const CLUES = [
     name: "1998년 10월자 낡은 신문",
     room: "1층 복도",
     x: 3, y: 3,
-    description: "우편함 옆에 구겨진 조간신문.\n'IMF 한파 속 재개발 표류... 은하아파트 철거 또 연기. 1985년 1304호 일가족 실종 미제 사건 이후 괴담 잇따라.'",
-    importance: "은하아파트 철거가 13년째 미뤄진 이유는 1985년 실종 사건과 괴담 때문이다.",
-    comboHint: "1304호 내부의 최근 생활 흔적(관리비 고지서 등)과 조합해 보자."
+    description: "우편함 옆에 구겨진 조간신문.\n'IMF 한파 속 재개발 표류... 은하아파트 철거 또 연기. 1985년 준공 직후 발생한 1304호 일가족 실종 미제 사건 이후 괴담이 끊이지 않아 입주민이 모두 떠나며 흉가로 방치돼 왔다.'",
+    importance: "1985년 1304호 실종 사건 이후 괴담 때문에 주민들이 떠나고 재개발마저 표류 중이다.",
+    comboHint: "13년째 비어 있다는 1304호에 지금도 누군가 살고 있다는 증거가 있을까?",
+    truthIds: ["combo_ghost_house"]
   },
   {
     id: "blueprint",
@@ -186,8 +207,9 @@ const CLUES = [
     room: "경비실",
     x: 11, y: 5,
     description: "은하아파트의 공식 건축 도면.\n지하 1층부터 지상 12층까지만 설계되어 있다. 13층은 도면 어디에도 존재하지 않는다.",
-    importance: "은하아파트에는 원래 13층이 없다.",
-    comboHint: "경비실의 '근무일지' 또는 13층 복도의 '벽면 긁힌 자국'과 조합해 보자."
+    importance: "은하아파트에는 원래 13층이 없다. 13층은 참극의 원념이 만들어낸 비현실적 공간이다.",
+    comboHint: "도면에 없는 13층을 봉쇄했거나 그곳에 갇혔던 흔적이 남아 있을까?",
+    truthIds: ["combo_space", "combo_coverup"]
   },
   {
     id: "guard_log",
@@ -195,17 +217,19 @@ const CLUES = [
     room: "경비실",
     x: 3, y: 5,
     description: "박만식의 필체로 적힌 낡은 근무일지.\n'1985.10.13 23:47 - 13층 비상 방화문 시건 조치. 상부 지시로 13층 출입 기록 전체 파기.'",
-    importance: "1985년 10월 13일 밤, 경비원이 13층 방화문을 밖에서 잠갔다.",
-    comboHint: "경비실의 '1985년 준공 도면'과 조합해 보자."
+    importance: "1985년 10월 13일 밤, 경비원 박만식이 13층 방화문을 밖에서 잠그고 출입 기록을 파기했다.",
+    comboHint: "경비원이 숨기려 했던 13층의 존재를 공식 건축 기록과 대조해 볼 수 있을까?",
+    truthIds: ["combo_coverup"]
   },
   {
     id: "car_memo",
-    name: "차량 내 수첩 조각",
+    name: "순찰차 내 수사 메모",
     room: "지하 주차장",
     x: 5, y: 6,
-    description: "먼지 쌓인 구형 순찰 기록 수첩.\n'1985년 10월 13일, 1304호 일가족 실종. 당시 현장에 휘말렸던 순경의 아들 강현우(당시 15세)가 13층 비상구 앞에서 구조됨.'",
-    importance: "13년 전 현장에서 구조된 아이의 이름이 강현우다.",
-    comboHint: "1304호 숨겨진 방에서 찾을 수 있는 '방문자 명부'와 조합해 보자."
+    description: "1985년 현장 지원 순경이 남긴 기록 수첩.\n'1985.10.13 1304호 일가족 실종. 선임 강 순경 실종, 비상구 앞에서 구조된 순경의 아들 □□□(당시 15세)는 기억 상실 상태로 이송됨.'",
+    importance: "1985년 실종된 강 순경의 아들이 바로 강현우 자신이며, 기억을 잃은 채 13번째 방문자로 돌아왔다.",
+    comboHint: "13년 전 현장에서 살아남은 소년의 이름이 적힌 또 다른 기록이 있을까?",
+    truthIds: ["combo_past"]
   },
   {
     id: "tally",
@@ -213,8 +237,9 @@ const CLUES = [
     room: "13층 복도",
     x: 9, y: 2,
     description: "콘크리트 벽을 손톱으로 긁어 남긴 열두 줄의 표시.\n그 아래 피로 쓴 듯한 글씨가 희미하다. '윤서를 지켜야 해. 문을 열지 마.'",
-    importance: "누군가 13층 복도에서 필사적으로 버티며 기록을 남겼다.",
-    comboHint: "경비실의 '1985년 준공 도면'과 조합해 보자."
+    importance: "누군가 존재하지 않는 13층 복도에서 필사적으로 버티며 경고를 남겼다.",
+    comboHint: "건물 설계 자체와 모순되는 이 13층의 존재를 입증할 공식 자료가 있을까?",
+    truthIds: ["combo_space"]
   },
   {
     id: "photo",
@@ -222,17 +247,19 @@ const CLUES = [
     room: "1304호 거실",
     x: 13, y: 2,
     description: "사진 속에는 네 명의 가족이 서 있다.\n그런데 사진 뒤편 어두운 베란다 창문에 낯선 남자의 얼굴이 비쳐 있다.",
-    importance: "실종 당일 촬영된 사진에 정체불명의 인물이 찍혀 있다.",
-    comboHint: "1304호 안방에서 발견되는 '병원 기록'과 조합해 보자."
+    importance: "실종 당일 촬영된 사진에 가족을 노리던 불청객의 형상이 찍혀 있다.",
+    comboHint: "사진 창문에 비친 불길한 그림자와 1304호 가족의 진료 기록 사이에 연관성이 있을까?",
+    truthIds: ["combo_yoonseo"]
   },
   {
     id: "letter",
     name: "찢어진 편지",
     room: "1304호 거실",
     x: 4, y: 6,
-    description: "'그 아이는 우리 아이가 아니야. 13층에서 들리는 소리를 더는 무시할 수 없어. 오늘 밤 아이를 벽장 뒤에 숨겨야 해.'",
-    importance: "어머니가 10월 13일 밤 아이를 숨기려 했던 흔적이다.",
-    comboHint: "1304호 아이 방의 '아이의 일기'와 조합해 비밀 통로를 열자."
+    description: "'그 사람은 우리가 알던 모습이 아니야. 13층에서 들리는 노크 소리를 더는 무시할 수 없어. 오늘 밤 아이를 벽장 뒤에 숨겨야 해.'",
+    importance: "어머니가 10월 13일 밤 아이를 보호하기 위해 벽장 뒤 밀실에 숨기려 했다.",
+    comboHint: "어머니가 아이를 숨기려 했던 '벽장 뒤'에 대해 아이 본인은 무엇을 기록했을까?",
+    truthIds: ["combo_secret"]
   },
   {
     id: "bill",
@@ -240,17 +267,19 @@ const CLUES = [
     room: "1304호 거실",
     x: 11, y: 4,
     description: "1304호 앞으로 발행된 1998년 10월분 관리비 명세서.\n13년째 거주자가 없는데도 매일 밤 11시 47분경 급격한 전기·수도 사용량이 기록되어 있다.",
-    importance: "1304호는 13년째 매달 밤마다 누군가 생활한 흔적이 찍히고 있다.",
-    comboHint: "1층 복도 우편함 옆의 '1998년 10월자 낡은 신문'과 조합해 보자."
+    importance: "1304호는 1985년 밤 11시 47분의 시간이 멈춘 채 13년째 그날의 흔적을 반복 재생하고 있다.",
+    comboHint: "13년간 방치된 건물의 재개발 표류 기사와 이 고지서를 함께 보면 무엇이 보일까?",
+    truthIds: ["combo_ghost_house"]
   },
   {
     id: "diary",
     name: "아이의 일기",
     room: "1304호 아이 방",
     x: 7, y: 3,
-    description: "10월 13일.\n오늘도 13번째 사람이 문을 두드렸다.\n엄마는 그 사람이 아빠라고 말했다.\n하지만 아빠는 이미 죽었다.",
-    importance: "13번째 방문자의 존재와 아버지의 비밀이 적혀 있다.",
-    comboHint: "1304호 거실의 '찢어진 편지'와 조합해 벽장 뒤 비밀을 풀자."
+    description: "10월 13일.\n오늘도 13번째 사람이 문을 두드렸다.\n엄마는 그 사람이 아빠라고 말했다.\n하지만 문틈으로 본 눈은 내가 알던 아빠가 아니었다.",
+    importance: "광기에 잠식된 아버지가 '13번째 방문자'가 되어 가족의 문을 두드리고 있었다.",
+    comboHint: "아이가 두려워하던 '13번째 사람'을 피해 어머니가 마련한 피난처는 어디였을까?",
+    truthIds: ["combo_secret"]
   },
   {
     id: "medical",
@@ -258,8 +287,9 @@ const CLUES = [
     room: "1304호 안방",
     x: 11, y: 5,
     description: "환자명: 윤서.\n진단: 심한 해리 증상 및 반복적인 환청.\n보호자 서명란에는 실종된 아버지의 이름이 적혀 있다.",
-    importance: "윤서는 실종된 가족의 딸이며 사건의 핵심 인물이다.",
-    comboHint: "1304호 거실의 '가족사진'과 조합해 보자."
+    importance: "윤서는 악령이 아니라 비극 속에서 홀로 살아남아 구조를 기다리던 소녀다.",
+    comboHint: "환자 윤서의 진료 기록과 가족의 마지막 모습이 담긴 사진을 대조해 볼 수 있을까?",
+    truthIds: ["combo_yoonseo"]
   },
   {
     id: "recording",
@@ -267,8 +297,9 @@ const CLUES = [
     room: "1304호 숨겨진 방",
     x: 6, y: 4,
     description: "녹음 재생...\n'문을 열지 마. 내가 돌아오면 절대 문을 열면 안 돼. 그건 내가 아니야.'\n그 뒤로 세 번의 무거운 노크 소리가 들린다.",
-    importance: "노크 소리에 속아 문을 열면 안 된다는 경고다.",
-    comboHint: "같은 방에 있는 '방문자 명부'와 조합해 보자."
+    importance: "환청과 노크 소리에 속아 문을 열면 새로운 13번째 방문자가 되어 영원히 갇힌다.",
+    comboHint: "녹음이 경고하는 '문을 열면 안 되는 이유'와 방문자 기록의 마지막 줄은 어떻게 이어질까?",
+    truthIds: ["combo_trap"]
   },
   {
     id: "ledger",
@@ -276,8 +307,9 @@ const CLUES = [
     room: "1304호 숨겨진 방",
     x: 11, y: 6,
     description: "은하아파트 방문자 기록.\n1998년 10월 13일.\n방문자 1번부터 12번까지 이름이 지워져 있고, 마지막 13번째 줄에는 '강현우'라고 적혀 있다.",
-    importance: "강현우 자신의 이름이 13번째 방문자로 기록되어 있다.",
-    comboHint: "지하 주차장의 '차량 내 수첩 조각' 또는 숨겨진 방의 '녹음기'와 조합해 보자."
+    importance: "강현우 자신의 이름이 13번째 방문자로 기록되어 있으며, 13년 전 생존 소년과 연결된다.",
+    comboHint: "마지막 13번째 칸에 적힌 이름의 과거 행적이나, 문밖 노크의 경고를 담은 기록이 있을까?",
+    truthIds: ["combo_past", "combo_trap"]
   }
 ];
 
@@ -286,13 +318,25 @@ const COMBINATIONS = [
     id: "combo_space",
     pair: ["blueprint", "tally"],
     title: "[진실 1] 도면에 없는 13층의 비밀",
-    summary: "은하아파트는 12층까지만 존재한다. 13층은 1985년 10월 13일의 참극과 원념이 응결되어 만들어진 비현실적 이계(異界)다."
+    summary: "은하아파트는 12층까지만 존재한다. 13층은 1985년 10월 13일의 참극과 원념이 응결되어 만들어진 비현실적 이계(異界)다.",
+    onUnlock: () => {
+      if (!flags.door1304Unlocked) {
+        flags.door1304Unlocked = true;
+        addLog("13층의 구조를 파악해 1304호 현관문을 열 수 있게 되었다.");
+      }
+    }
   },
   {
     id: "combo_coverup",
     pair: ["blueprint", "guard_log"],
     title: "[진실 2] 은폐된 방화문 봉쇄",
-    summary: "1985년 그날 밤, 경비원 박만식은 참극을 목격하고도 13층 방화문을 밖에서 잠근 채 기록을 파기했다."
+    summary: "1985년 그날 밤, 경비원 박만식은 참극을 목격하고도 13층 방화문을 밖에서 잠근 채 출입 기록을 파기했다.",
+    onUnlock: () => {
+      if (!flags.door1304Unlocked) {
+        flags.door1304Unlocked = true;
+        addLog("방화문 봉쇄 경위를 밝혀내 1304호 진입 단서를 확보했다.");
+      }
+    }
   },
   {
     id: "combo_secret",
@@ -302,7 +346,7 @@ const COMBINATIONS = [
     onUnlock: () => {
       if (!flags.secretOpen) {
         flags.secretOpen = true;
-        addLog("증거 조합으로 아이 방 벽장 뒤 비밀 통로의 단서를 찾아냈다!");
+        addLog("증거 조합으로 아이 방 벽장 뒤 비밀 통로를 여는 방법을 알아냈다!");
       }
     }
   },
@@ -310,13 +354,25 @@ const COMBINATIONS = [
     id: "combo_yoonseo",
     pair: ["photo", "medical"],
     title: "[진실 4] 소녀 윤서의 정체",
-    summary: "윤서는 악령이 아니라 13년 전 가족의 비극 속에서 홀로 살아남아 구조를 기다리다 13층의 시간에 갇혀버린 소녀다."
+    summary: "윤서는 악령이 아니라 13년 전 아버지의 광기 속에서 홀로 살아남아 구조를 기다리다 13층의 시간에 갇혀버린 소녀다.",
+    onUnlock: () => {
+      if (!flags.flashbackYoonseoSeen) {
+        flags.flashbackYoonseoSeen = true;
+        triggerMemoryFlashback("yoonseo");
+      }
+    }
   },
   {
     id: "combo_past",
     pair: ["car_memo", "ledger"],
     title: "[진실 5] 강현우의 잃어버린 기억",
-    summary: "13년 전 사건 현장에서 구조되었던 15세 소년이 바로 강현우 자신이다. 트라우마로 기억을 잃은 채 13번째 방문자로 되돌아온 것이다."
+    summary: "13년 전 사건 현장에서 구조되었던 강 순경의 15세 아들이 바로 강현우 자신이다. 트라우마로 기억을 잃은 채 윤서를 구하기 위해 되돌아온 것이다.",
+    onUnlock: () => {
+      if (!flags.flashbackPastSeen) {
+        flags.flashbackPastSeen = true;
+        triggerMemoryFlashback("past");
+      }
+    }
   },
   {
     id: "combo_trap",
@@ -332,7 +388,7 @@ const COMBINATIONS = [
   }
 ];
 
-/* 필드에서 획득 가능한 소비 아이템 (신경안정제 중심) */
+/* 필드에서 획득 가능한 소비 아이템 (신경안정제 3개로 긴장감 유지) */
 const FIELD_ITEMS = [
   {
     id: "sed_1f",
@@ -341,14 +397,6 @@ const FIELD_ITEMS = [
     room: "1층 복도",
     x: 16, y: 5,
     desc: "안내판 옆 비상 구급상자에서 찾은 처방 안정제. 극심한 공포를 진정시켜 정신력을 30 회복한다."
-  },
-  {
-    id: "sed_guard",
-    type: "sedative",
-    name: "경비실 신경안정제",
-    room: "경비실",
-    x: 9, y: 2,
-    desc: "경비실 벽면 구급함에서 찾은 처방 안정제. 복용 시 정신력을 30 회복한다."
   },
   {
     id: "sed_b1",
@@ -365,18 +413,10 @@ const FIELD_ITEMS = [
     room: "1304호 안방",
     x: 10, y: 3,
     desc: "화장대 서랍에 보관되어 있던 약병. 복용 시 정신력을 30 회복한다."
-  },
-  {
-    id: "sed_child",
-    type: "sedative",
-    name: "책상 서랍 안정제",
-    room: "1304호 아이 방",
-    x: 10, y: 4,
-    desc: "아이 방 책상 서랍에 들어 있던 비상약. 복용 시 정신력을 30 회복한다."
   }
 ];
 
-/* 1998년 한국 아파트 환경 소품 */
+/* 1998년 한국 아파트 환경 소품 (8종 모두 조사 시 추가 통찰 보상) */
 const PROPS = [
   {
     id: "clock_1f",
@@ -450,13 +490,13 @@ const PROPS = [
     x: 4, y: 4,
     speaker: "윤서",
     speakerClass: "c-ghost",
-    text: "인형 옆에 놓인 쪽지에 비뚤비뚤한 글씨가 적혀 있다. '아저씨, 벽장 뒤로 오면 안 돼요... 아빠가 거기 있어요...'",
+    text: "인형 옆에 놓인 쪽지에 비뚤비뚤한 글씨가 적혀 있다. '오빠, 벽장 뒤로 오면 안 돼요... 아빠가 문을 두드리고 있어요...'",
     sanityDelta: -4,
     sanityReason: "아이 방 인형에 남겨진 섬뜩한 메모"
   }
 ];
 
-/* 구역별 가변 맵 크기 (cols, rows) & 전략적으로 축소된 은신처 배치 (구역 이탈 유도) */
+/* 구역별 가변 맵 크기 (cols, rows) & 은신처 배치 */
 const ROOMS = {
   "1층 복도": {
     cols: 20, rows: 9,
@@ -591,7 +631,7 @@ const NPCS = [
 ];
 
 /* -------------------------------------------------------------------------
-   4. 게임 상태 변수 (형광등 점멸 & 은신 · 구역 이탈 시스템 포함)
+   4. 게임 상태 변수 (추격 AI · 상태 잠금 · 기억 회상 컷신 포함)
    ------------------------------------------------------------------------- */
 const canvas = document.getElementById("screen");
 const ctx = canvas.getContext("2d");
@@ -633,6 +673,7 @@ let pickedFieldItems = [];
 let examinedProps = [];
 let inventory = { sedative: 1 };
 let flags = {};
+let activeChoices = [];
 
 let isHiding = false;
 let currentHidingLabel = "";
@@ -642,12 +683,13 @@ let elevatorFloor = "1층 복도";
 let titleActive = true;
 let showMinimap = true;
 
-// 프롤로그 & 튜토리얼 상태
+// 프롤로그, 회상 컷신 & 상황 트리거 튜토리얼 상태
 let prologueActive = false;
 let prologueIndex = 0;
-let tutorialStep = 0; // 0 = 비활성, 1~4 = 진행 중 단계
+let flashbackActive = false;
+let tutorialStep = 0;
 
-// 원혼 출현 전조 & 추격 AI 상태
+// 13번째 방문자(추격자) AI 상태 — 걷기(4.125) < 추격자(4.85) < 질주(6.75)
 let ghost = {
   warning: false,
   active: false,
@@ -656,8 +698,9 @@ let ghost = {
   spawnY: 0,
   px: 0,
   py: 0,
-  speed: 2.25,
+  speed: 4.85,
   patrolTimer: 0,
+  entryDelay: 0,
   heartbeatCooldown: 0,
   chaseText: "",
   escapeRoomCount: 0
@@ -670,186 +713,9 @@ let animTick = 0;
 let screenShake = 0;
 
 /* -------------------------------------------------------------------------
-   5. 동적 UI 스타일 주입 · 키워드 강조 · 16비트 대화창 포트레이트 일러스트
+   5. 동적 DOM 보강 · 키워드 강조 · 16비트 대화창 포트레이트 일러스트
    ------------------------------------------------------------------------- */
-function injectEnhancedStylesAndDOM() {
-  if (!document.getElementById("visitor-v12-style")) {
-    const style = document.createElement("style");
-    style.id = "visitor-v12-style";
-    style.textContent = `
-      .hl-gold { color: #F2D28B; font-weight: 700; }
-      .hl-blue { color: #8FC9FF; font-weight: 700; }
-      .hl-red  { color: #F09BA8; font-weight: 700; }
-      .hl-mint { color: #9ce0b8; font-weight: 700; }
-
-      #dialogue-visual-row {
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        margin-bottom: 6px;
-      }
-      #portrait-frame {
-        flex: 0 0 76px;
-        width: 76px;
-        background: #0d0f18;
-        border: 1.5px solid #59536b;
-        border-radius: 4px;
-        padding: 3px;
-        box-shadow: inset 0 0 10px rgba(0,0,0,0.85);
-        text-align: center;
-      }
-      #portrait-canvas {
-        display: block;
-        width: 68px;
-        height: 68px;
-        margin: 0 auto;
-        image-rendering: pixelated;
-        background: #141724;
-      }
-      #portrait-role {
-        margin-top: 3px;
-        font-size: 9px;
-        line-height: 1.2;
-        color: #b8bdd1;
-        letter-spacing: -0.3px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      #dialogue-text-col {
-        flex: 1;
-        min-width: 0;
-      }
-
-      /* 프롤로그 시네마틱 오버레이 */
-      #prologue-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 9999;
-        background: rgba(5, 6, 12, 0.94);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        padding: 18px;
-      }
-      .prologue-card {
-        width: 100%;
-        max-width: 640px;
-        background: #121420;
-        border: 2px solid #6b627d;
-        border-radius: 6px;
-        padding: 20px 22px;
-        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.85);
-        color: #e6e8f2;
-      }
-      .prologue-top {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 11px;
-        color: #F2D28B;
-        margin-bottom: 8px;
-        border-bottom: 1px solid #2b2f42;
-        padding-bottom: 6px;
-      }
-      .prologue-title {
-        font-size: 18px;
-        font-weight: 700;
-        color: #ffffff;
-        margin-bottom: 12px;
-      }
-      .prologue-body-row {
-        display: flex;
-        gap: 16px;
-        align-items: center;
-        margin-bottom: 16px;
-      }
-      #prologue-art-canvas {
-        flex: 0 0 160px;
-        width: 160px;
-        height: 110px;
-        border: 1.5px solid #4c465c;
-        background: #0a0c14;
-        image-rendering: pixelated;
-      }
-      #prologue-text {
-        flex: 1;
-        font-size: 13.5px;
-        line-height: 1.72;
-        color: #dfe3f0;
-      }
-      .prologue-actions {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 10px;
-      }
-      .prologue-btn {
-        background: #23283b;
-        color: #e6e8f2;
-        border: 1px solid #5c6482;
-        padding: 7px 14px;
-        border-radius: 4px;
-        font-size: 12px;
-        cursor: pointer;
-      }
-      .prologue-btn:hover {
-        background: #2f3650;
-      }
-      .prologue-btn-primary {
-        background: #33476b;
-        border-color: #8FC9FF;
-        color: #ffffff;
-        font-weight: 700;
-      }
-      .prologue-btn-primary:hover {
-        background: #405985;
-      }
-
-      /* 튜토리얼 배너 */
-      #tutorial-banner {
-        display: none;
-        margin-top: 8px;
-        padding: 9px 11px;
-        background: rgba(20, 29, 46, 0.92);
-        border: 1px solid #8FC9FF;
-        border-radius: 4px;
-        font-size: 12px;
-        line-height: 1.55;
-        color: #e8eefc;
-      }
-      .tutorial-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 4px;
-        color: #8FC9FF;
-        font-weight: 700;
-        font-size: 12px;
-      }
-      .tutorial-controls {
-        margin-top: 6px;
-        display: flex;
-        gap: 6px;
-        justify-content: flex-end;
-      }
-      .tut-btn {
-        background: #1c263b;
-        color: #cfe3ff;
-        border: 1px solid #5976a8;
-        border-radius: 3px;
-        padding: 3px 9px;
-        font-size: 11px;
-        cursor: pointer;
-      }
-      .tut-btn:hover {
-        background: #2a3957;
-      }
-    `;
-    document.head.appendChild(style);
-  }
-
-  // 대화창에 16비트 픽셀 포트레이트 박스 및 튜토리얼 배너 삽입
+function ensureDynamicDOM() {
   const sp = document.getElementById("speaker");
   const msg = document.getElementById("message");
   const chBox = document.getElementById("choices");
@@ -883,7 +749,7 @@ function injectEnhancedStylesAndDOM() {
     }
   }
 
-  // 프롤로그 오버레이 DOM 생성
+  // 프롤로그 오버레이 DOM
   if (!document.getElementById("prologue-overlay")) {
     const ov = document.createElement("div");
     ov.id = "prologue-overlay";
@@ -908,6 +774,30 @@ function injectEnhancedStylesAndDOM() {
     document.getElementById("btn-prologue-skip").onclick = finishPrologue;
     document.getElementById("btn-prologue-next").onclick = advancePrologue;
   }
+
+  // 기억 회상 컷신 오버레이 DOM
+  if (!document.getElementById("flashback-overlay")) {
+    const fb = document.createElement("div");
+    fb.id = "flashback-overlay";
+    fb.innerHTML = `
+      <div class="flashback-card">
+        <div class="prologue-top">
+          <span id="flashback-chapter">MEMORY FLASHBACK</span>
+          <span>TRUTH UNLOCKED</span>
+        </div>
+        <div class="prologue-title" id="flashback-title">기억의 조각</div>
+        <div class="prologue-body-row">
+          <canvas id="flashback-art-canvas" width="160" height="110"></canvas>
+          <div id="flashback-text"></div>
+        </div>
+        <div class="prologue-actions" style="justify-content:flex-end;">
+          <button class="prologue-btn prologue-btn-primary" id="btn-flashback-close">기억을 새기고 수사 계속 ▶ [Space]</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(fb);
+    document.getElementById("btn-flashback-close").onclick = closeMemoryFlashback;
+  }
 }
 
 function escapeHtml(str) {
@@ -920,32 +810,29 @@ function escapeHtml(str) {
 function formatHighlightedDialogue(rawText) {
   let html = escapeHtml(rawText);
 
-  // 명시적 태그([[gold:...]], [[blue:...]], [[red:...]], [[mint:...]]) 우선 치환
   html = html.replace(/\[\[(gold|blue|red|mint):([^\]]+)\]\]/g, (_, cls, inner) => {
     return `<span class="hl-${cls}">${inner}</span>`;
   });
 
-  // 자동 핵심 키워드 강조 규칙 (태그 내부 속성값을 건드리지 않도록 텍스트 구간만 치환)
   const rules = [
     {
       cls: "hl-gold",
-      regex: /(1985년 10월 13일|1998년 10월 13일|1999년 10월 13일|11시 47분|23:47|1304호|1303호|1302호|1204호|13층|열세 번째|13번째 방문자|방문자 명부|준공 도면|근무일지|녹음기|가족사진|병원 기록|아이의 일기|찢어진 편지|관리비 고지서|연관 단서 힌트)/g
+      regex: /(1985년 10월 13일|1998년 10월 13일|1999년 10월 13일|11시 47분|23:47|1304호|1303호|1302호|1204호|13층|열세 번째|13번째 방문자|방문자 명부|준공 도면|근무일지|녹음기|가족사진|병원 기록|아이의 일기|찢어진 편지|관리비 고지서|추리 질문|핵심 해석)/g
     },
     {
       cls: "hl-blue",
-      regex: /(강현우|윤서|박만식|한미정|벽장 뒤|숨겨진 방|낡은 거울|거울|\[H\]|\[E\]|\[C\]|\[M\]|\[1\])/g
+      regex: /(강현우|윤서|박만식|한미정|벽장 뒤|숨겨진 방|낡은 거울|거울|\[H\]|\[E\]|\[C\]|\[M\]|\[Q\])/g
     },
     {
       cls: "hl-red",
-      regex: /(형광등이 격렬하게 깜빡|형광등이 불규칙하게 점멸|형광등이 심하게 깜빡|형광등이 깜빡이면|형광등이 깜빡거리면|문을 열지 마|정전|원혼|노크 소리|몸을 숨길 곳이 없다|실종|피로 쓴|죽었다|GAME OVER|BAD END)/g
+      regex: /(형광등이 격렬하게 깜빡|형광등이 불규칙하게 점멸|형광등이 심하게 깜빡|형광등이 깜빡이면|형광등이 깜빡거리면|문을 열지 마|정전|원혼|노크 소리|몸을 숨길 곳이 없다|실종|피로 쓴|GAME OVER|BAD END)/g
     },
     {
       cls: "hl-mint",
-      regex: /(은신|숨기|캐비닛|대형 장롱|장롱|콘크리트 기둥|기둥|신경안정제|안전 구역|TRUE END)/g
+      regex: /(은신|숨기|캐비닛|대형 장롱|장롱|콘크리트 기둥|기둥|신경안정제|TRUE END)/g
     }
   ];
 
-  // HTML 태그(<span ...>...</span>)를 분리해 일반 텍스트 조각에만 규칙 적용
   rules.forEach(rule => {
     const parts = html.split(/(<span[^>]*>.*?<\/span>)/g);
     html = parts
@@ -960,7 +847,7 @@ function formatHighlightedDialogue(rawText) {
 }
 
 /* 대화창 좌측 16비트 픽셀 일러스트(포트레이트) 렌더링 */
-function renderSpeakerPortrait(speakerName, speakerClass) {
+function renderSpeakerPortrait(speakerName) {
   const pCanvas = document.getElementById("portrait-canvas");
   const pRole = document.getElementById("portrait-role");
   if (!pCanvas || !pRole) return;
@@ -986,46 +873,36 @@ function renderSpeakerPortrait(speakerName, speakerClass) {
   } else if (name.includes("윤서")) {
     kind = "yoonseo";
     roleLabel = "13층의 소녀";
-  } else if (name.includes("원혼") || name.includes("BAD END") || name.includes("GAME OVER")) {
+  } else if (name.includes("방문자") || name.includes("원혼") || name.includes("BAD END") || name.includes("GAME OVER")) {
     kind = "ghost";
-    roleLabel = "13층의 원념";
-  } else if (name.includes("단서") || name.includes("수첩") || name.includes("TRUE END")) {
+    roleLabel = "13번째 방문자";
+  } else if (name.includes("단서") || name.includes("수첩") || name.includes("진실") || name.includes("TRUE END")) {
     kind = "clue";
     roleLabel = "수사 기록";
   }
 
   pRole.textContent = roleLabel;
 
-  // 배경 그라데이션
   const bg = pctx.createLinearGradient(0, 0, 0, H);
   if (kind === "hero") {
-    bg.addColorStop(0, "#182438");
-    bg.addColorStop(1, "#0d131f");
+    bg.addColorStop(0, "#182438"); bg.addColorStop(1, "#0d131f");
   } else if (kind === "park") {
-    bg.addColorStop(0, "#1c2b28");
-    bg.addColorStop(1, "#0f1715");
+    bg.addColorStop(0, "#1c2b28"); bg.addColorStop(1, "#0f1715");
   } else if (kind === "han") {
-    bg.addColorStop(0, "#2b1d2c");
-    bg.addColorStop(1, "#140d15");
+    bg.addColorStop(0, "#2b1d2c"); bg.addColorStop(1, "#140d15");
   } else if (kind === "yoonseo") {
-    bg.addColorStop(0, "#262333");
-    bg.addColorStop(1, "#110f17");
+    bg.addColorStop(0, "#262333"); bg.addColorStop(1, "#110f17");
   } else if (kind === "ghost") {
-    bg.addColorStop(0, "#3b1019");
-    bg.addColorStop(1, "#140508");
+    bg.addColorStop(0, "#3b1019"); bg.addColorStop(1, "#140508");
   } else if (kind === "clue") {
-    bg.addColorStop(0, "#2e2618");
-    bg.addColorStop(1, "#14110b");
+    bg.addColorStop(0, "#2e2618"); bg.addColorStop(1, "#14110b");
   } else {
-    bg.addColorStop(0, "#1b2030");
-    bg.addColorStop(1, "#0d1018");
+    bg.addColorStop(0, "#1b2030"); bg.addColorStop(1, "#0d1018");
   }
   pctx.fillStyle = bg;
   pctx.fillRect(0, 0, W, H);
 
-  // 캐릭터별 16비트 픽셀 초상화 그리기
   if (kind === "hero") {
-    // 트렌치코트 & 셔츠 넥타이
     pctx.fillStyle = "#263b59";
     pctx.fillRect(12, 46, 44, 22);
     pctx.fillStyle = "#1b2a40";
@@ -1034,19 +911,16 @@ function renderSpeakerPortrait(speakerName, speakerClass) {
     pctx.fillRect(29, 47, 10, 14);
     pctx.fillStyle = "#141c2b";
     pctx.fillRect(33, 49, 2, 14);
-    // 목 & 얼굴
     pctx.fillStyle = "#d9ad91";
     pctx.fillRect(29, 40, 10, 7);
     pctx.fillStyle = "#f2cbb0";
     pctx.fillRect(21, 18, 26, 24);
-    // 머리카락
     pctx.fillStyle = "#161821";
     pctx.fillRect(19, 11, 30, 10);
     pctx.fillRect(19, 18, 4, 15);
     pctx.fillRect(45, 18, 4, 15);
     pctx.fillRect(24, 19, 4, 3);
     pctx.fillRect(36, 19, 5, 3);
-    // 눈썹 & 눈
     pctx.fillStyle = "#1a1d26";
     pctx.fillRect(24, 26, 6, 2);
     pctx.fillRect(38, 26, 6, 2);
@@ -1056,11 +930,9 @@ function renderSpeakerPortrait(speakerName, speakerClass) {
     pctx.fillStyle = "#ffffff";
     pctx.fillRect(26, 29, 1, 1);
     pctx.fillRect(39, 29, 1, 1);
-    // 입
     pctx.fillStyle = "#b8826c";
     pctx.fillRect(31, 37, 6, 2);
   } else if (kind === "park") {
-    // 경비원 제복 & 견장
     pctx.fillStyle = "#36524d";
     pctx.fillRect(12, 47, 44, 21);
     pctx.fillStyle = "#f2d28b";
@@ -1068,38 +940,32 @@ function renderSpeakerPortrait(speakerName, speakerClass) {
     pctx.fillRect(45, 48, 8, 3);
     pctx.fillStyle = "#d6e0de";
     pctx.fillRect(30, 47, 8, 12);
-    // 얼굴
     pctx.fillStyle = "#cfa184";
     pctx.fillRect(29, 41, 10, 6);
     pctx.fillStyle = "#e0b89d";
     pctx.fillRect(21, 20, 26, 22);
-    // 경비모
     pctx.fillStyle = "#223330";
     pctx.fillRect(18, 11, 32, 9);
     pctx.fillStyle = "#131c1a";
     pctx.fillRect(17, 19, 34, 3);
     pctx.fillStyle = "#F2D28B";
     pctx.fillRect(32, 14, 4, 4);
-    // 눈 & 콧수염
     pctx.fillStyle = "#141414";
     pctx.fillRect(25, 28, 3, 3);
     pctx.fillRect(40, 28, 3, 3);
     pctx.fillStyle = "#4a4644";
     pctx.fillRect(28, 35, 12, 2);
   } else if (kind === "han") {
-    // 보라빛 가디건
     pctx.fillStyle = "#6e4b6b";
     pctx.fillRect(13, 47, 42, 21);
     pctx.fillStyle = "#e8dfe6";
     pctx.fillRect(28, 47, 12, 14);
-    // 얼굴 & 단발머리
     pctx.fillStyle = "#f2cbb0";
     pctx.fillRect(22, 20, 24, 22);
     pctx.fillStyle = "#291b23";
     pctx.fillRect(18, 12, 32, 10);
     pctx.fillRect(18, 19, 5, 24);
     pctx.fillRect(45, 19, 5, 24);
-    // 불안한 눈빛
     pctx.fillStyle = "#181216";
     pctx.fillRect(25, 28, 4, 4);
     pctx.fillRect(39, 28, 4, 4);
@@ -1109,7 +975,6 @@ function renderSpeakerPortrait(speakerName, speakerClass) {
     pctx.fillStyle = "#c4847a";
     pctx.fillRect(31, 37, 6, 2);
   } else if (kind === "yoonseo") {
-    // 소녀 윤서 (창백한 안색 & 흰 원피스)
     pctx.fillStyle = "#dce3ed";
     pctx.fillRect(15, 48, 38, 20);
     pctx.fillStyle = "#b5c0cf";
@@ -1122,14 +987,12 @@ function renderSpeakerPortrait(speakerName, speakerClass) {
     pctx.fillRect(45, 20, 4, 28);
     pctx.fillRect(24, 21, 3, 4);
     pctx.fillRect(40, 21, 3, 4);
-    // 슬픈 어두운 눈
     pctx.fillStyle = "#2e1219";
     pctx.fillRect(26, 29, 3, 4);
     pctx.fillRect(39, 29, 3, 4);
     pctx.fillStyle = "#c99ea6";
     pctx.fillRect(32, 37, 4, 2);
   } else if (kind === "ghost") {
-    // 13층의 원혼
     pctx.fillStyle = "rgba(240, 155, 168, 0.22)";
     pctx.beginPath();
     pctx.arc(34, 34, 26, 0, Math.PI * 2);
@@ -1146,7 +1009,6 @@ function renderSpeakerPortrait(speakerName, speakerClass) {
     pctx.fillRect(26, 29, 2, 2);
     pctx.fillRect(40, 29, 2, 2);
   } else if (kind === "clue") {
-    // 수사 수첩 & 돋보기 픽셀 일러스트
     pctx.fillStyle = "#5c4938";
     pctx.fillRect(16, 16, 28, 36);
     pctx.fillStyle = "#F2D28B";
@@ -1155,7 +1017,6 @@ function renderSpeakerPortrait(speakerName, speakerClass) {
     pctx.fillRect(22, 24, 16, 2);
     pctx.fillRect(22, 29, 14, 2);
     pctx.fillRect(22, 34, 12, 2);
-    // 돋보기
     pctx.strokeStyle = "#8FC9FF";
     pctx.lineWidth = 3;
     pctx.beginPath();
@@ -1166,7 +1027,6 @@ function renderSpeakerPortrait(speakerName, speakerClass) {
     pctx.lineTo(56, 54);
     pctx.stroke();
   } else {
-    // SYSTEM / 13층 인터폰 모니터 아이콘
     pctx.strokeStyle = "#8FC9FF";
     pctx.lineWidth = 2;
     pctx.strokeRect(14, 16, 40, 30);
@@ -1180,7 +1040,6 @@ function renderSpeakerPortrait(speakerName, speakerClass) {
     pctx.fillRect(26, 49, 16, 4);
   }
 
-  // 레트로 CRT 스캔라인 효과
   pctx.fillStyle = "rgba(0, 0, 0, 0.22)";
   for (let y = 0; y < H; y += 3) {
     pctx.fillRect(0, y, W, 1);
@@ -1188,10 +1047,10 @@ function renderSpeakerPortrait(speakerName, speakerClass) {
 }
 
 /* -------------------------------------------------------------------------
-   6. 프롤로그 및 순차 튜토리얼 제어
+   6. 프롤로그, 기억 회상 컷신 & 상황 트리거 튜토리얼 제어
    ------------------------------------------------------------------------- */
-function drawPrologueSceneArt(artType) {
-  const c = document.getElementById("prologue-art-canvas");
+function drawSceneArt(canvasId, artType) {
+  const c = document.getElementById(canvasId);
   if (!c) return;
   const g = c.getContext("2d");
   const W = c.width;
@@ -1201,7 +1060,6 @@ function drawPrologueSceneArt(artType) {
   g.fillRect(0, 0, W, H);
 
   if (artType === "apt_night") {
-    // 밤하늘 & 은하아파트 실루엣 + 13층 붉은 창문
     g.fillStyle = "#f2d28b";
     g.beginPath();
     g.arc(132, 22, 9, 0, Math.PI * 2);
@@ -1217,7 +1075,6 @@ function drawPrologueSceneArt(artType) {
       }
     }
   } else if (artType === "corridor_13") {
-    // 13층 복도 원근 & 벽면 긁힌 자국
     g.fillStyle = "#1a131c";
     g.fillRect(0, 0, W, H);
     g.strokeStyle = "#543944";
@@ -1230,16 +1087,13 @@ function drawPrologueSceneArt(artType) {
     g.moveTo(W, H); g.lineTo(112, 86);
     g.stroke();
 
-    // 붉은 비상구 표시등
     g.fillStyle = "#9ce0b8";
     g.fillRect(72, 14, 16, 6);
-    // 벽면 긁힌 표시
     g.fillStyle = "#F09BA8";
     for (let i = 0; i < 6; i++) {
       g.fillRect(18 + i * 4, 48, 2, 16);
     }
   } else if (artType === "knock_door") {
-    // 1304호 철문과 세 번의 노크 파동
     g.fillStyle = "#261f29";
     g.fillRect(54, 12, 52, 88);
     g.strokeStyle = "#F2D28B";
@@ -1251,15 +1105,48 @@ function drawPrologueSceneArt(artType) {
     g.textAlign = "center";
     g.fillText("1304", 80, 30);
 
-    // 노크 파동
     g.strokeStyle = "#F09BA8";
     [12, 20, 28].forEach(r => {
       g.beginPath();
       g.arc(80, 56, r, 0, Math.PI * 2);
       g.stroke();
     });
+  } else if (artType === "memory_rescue") {
+    // 1985년 비상구 앞 기억 복원 컷신
+    g.fillStyle = "#1c1824";
+    g.fillRect(0, 0, W, H);
+    g.fillStyle = "#9ce0b8";
+    g.fillRect(66, 12, 28, 8);
+    // 소년 실루엣 + 손전등 불빛
+    g.fillStyle = "rgba(242, 210, 139, 0.16)";
+    g.beginPath();
+    g.arc(80, 62, 34, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = "#2b4263";
+    g.fillRect(68, 56, 24, 32);
+    g.fillStyle = "#f2cbb0";
+    g.fillRect(71, 36, 18, 18);
+    g.fillStyle = "#F2D28B";
+    g.font = "bold 10px monospace";
+    g.textAlign = "center";
+    g.fillText("1985 · 강현우", 80, 102);
+  } else if (artType === "memory_yoonseo") {
+    // 1304호 벽장 뒤 윤서 기억 컷신
+    g.fillStyle = "#1a1726";
+    g.fillRect(0, 0, W, H);
+    g.strokeStyle = "#8FC9FF";
+    g.strokeRect(46, 18, 68, 74);
+    g.fillStyle = "#dce3ed";
+    g.fillRect(68, 54, 24, 34);
+    g.fillStyle = "#f5e8ea";
+    g.fillRect(71, 35, 18, 18);
+    g.fillStyle = "#14131a";
+    g.fillRect(68, 29, 24, 9);
+    g.fillStyle = "#8FC9FF";
+    g.font = "bold 10px monospace";
+    g.textAlign = "center";
+    g.fillText("1304호 · 윤서", 80, 102);
   } else {
-    // 강현우 로비 도착
     g.fillStyle = "#161b29";
     g.fillRect(0, 0, W, H);
     g.fillStyle = "#2b4263";
@@ -1278,7 +1165,7 @@ function drawPrologueSceneArt(artType) {
 }
 
 function startPrologue() {
-  injectEnhancedStylesAndDOM();
+  ensureDynamicDOM();
   prologueActive = true;
   prologueIndex = 0;
   const ov = document.getElementById("prologue-overlay");
@@ -1299,7 +1186,7 @@ function renderPrologueScene() {
   document.getElementById("prologue-text").innerHTML = formatHighlightedDialogue(scene.text);
   document.getElementById("btn-prologue-next").textContent =
     prologueIndex === PROLOGUE_SCENES.length - 1 ? "수사 시작 ▶ [Space]" : "다음 ▶ [Space]";
-  drawPrologueSceneArt(scene.art);
+  drawSceneArt("prologue-art-canvas", scene.art);
 }
 
 function advancePrologue() {
@@ -1318,6 +1205,28 @@ function finishPrologue() {
   if (ov) ov.style.display = "none";
   playSfx("door");
   startTutorialStep(1);
+}
+
+function triggerMemoryFlashback(key) {
+  const scene = FLASHBACK_SCENES[key];
+  if (!scene) return;
+  ensureDynamicDOM();
+  flashbackActive = true;
+  clearHeldInputs();
+  playSfx("flashback");
+  document.getElementById("flashback-chapter").textContent = scene.chapter;
+  document.getElementById("flashback-title").textContent = scene.title;
+  document.getElementById("flashback-text").innerHTML = formatHighlightedDialogue(scene.text);
+  drawSceneArt("flashback-art-canvas", scene.art);
+  const fb = document.getElementById("flashback-overlay");
+  if (fb) fb.style.display = "flex";
+}
+
+function closeMemoryFlashback() {
+  flashbackActive = false;
+  const fb = document.getElementById("flashback-overlay");
+  if (fb) fb.style.display = "none";
+  playSfx("clue");
 }
 
 function startTutorialStep(stepNum) {
@@ -1343,8 +1252,8 @@ function renderTutorialBanner() {
     </div>
     <div>${formatHighlightedDialogue(info.text)}</div>
     <div class="tutorial-controls">
-      <button class="tut-btn" onclick="skipTutorial()">튜토리얼 종료</button>
-      <button class="tut-btn" onclick="advanceTutorialStep()">${isLast ? "완료 ✔" : "다음 단계 ▶"}</button>
+      <button class="tut-btn" onclick="skipTutorial()">가이드 닫기</button>
+      <button class="tut-btn" onclick="advanceTutorialStep()">${isLast ? "확인 ✔" : "다음 ▶"}</button>
     </div>
   `;
 }
@@ -1354,10 +1263,15 @@ function advanceTutorialStep() {
   playSfx("switch");
   if (tutorialStep >= TUTORIAL_STEPS.length) {
     skipTutorial();
-    say("강현우", "기본적인 수사 준비는 끝났어. 먼저 1층 복도와 경비실, 주민에게서 단서를 모아보자.", "c-hero");
   } else {
-    tutorialStep++;
-    renderTutorialBanner();
+    // 1 -> 2 단계까지만 순차 진행하고, 3단계(단서 2개 수집 시)와 4단계(첫 점멸 시)는 상황 트리거로 표시
+    if (tutorialStep === 1) {
+      tutorialStep = 2;
+      renderTutorialBanner();
+    } else {
+      tutorialStep = 0;
+      renderTutorialBanner();
+    }
   }
 }
 
@@ -1368,8 +1282,16 @@ function skipTutorial() {
 }
 
 /* -------------------------------------------------------------------------
-   7. 좌표 · 카메라 · 전방 타일 유틸리티
+   7. 좌표 · 카메라 · BFS 길찾기 유틸리티
    ------------------------------------------------------------------------- */
+function clearHeldInputs() {
+  Object.keys(keys).forEach(k => { keys[k] = false; });
+  padKeys.up = false;
+  padKeys.down = false;
+  padKeys.left = false;
+  padKeys.right = false;
+}
+
 function dirToDelta(dir) {
   if (dir === "up") return { dx: 0, dy: -1 };
   if (dir === "down") return { dx: 0, dy: 1 };
@@ -1430,6 +1352,38 @@ function updateCamera(dt) {
   if (Math.abs(target.y - camera.y) < 0.25) camera.y = target.y;
 }
 
+/* 타일 기반 BFS 최단 경로 첫 스텝 계산 (추격자 벽/가구 우회) */
+function getNextBfsStep(roomName, startX, startY, goalX, goalY) {
+  const r = ROOMS[roomName];
+  if (!r || (startX === goalX && startY === goalY)) return { x: goalX, y: goalY };
+
+  const visited = new Set([`${startX},${startY}`]);
+  const queue = [{ x: startX, y: startY, firstStep: null }];
+
+  while (queue.length > 0) {
+    const cur = queue.shift();
+    for (const [dx, dy] of [[0, 1], [0, -1], [-1, 0], [1, 0]]) {
+      const nx = cur.x + dx;
+      const ny = cur.y + dy;
+      const key = `${nx},${ny}`;
+      if (visited.has(key)) continue;
+      visited.add(key);
+
+      if (nx === goalX && ny === goalY) {
+        return cur.firstStep || { x: nx, y: ny };
+      }
+      if (!isBlocked(roomName, nx, ny)) {
+        queue.push({
+          x: nx,
+          y: ny,
+          firstStep: cur.firstStep || { x: nx, y: ny }
+        });
+      }
+    }
+  }
+  return { x: goalX, y: goalY };
+}
+
 /* -------------------------------------------------------------------------
    8. 타이틀 화면 및 엔딩 기록 관리
    ------------------------------------------------------------------------- */
@@ -1450,6 +1404,17 @@ function recordEndingUnlock(type) {
   }
 }
 
+function hasValidSaveData() {
+  try {
+    const raw = localStorage.getItem("visitorSave");
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    return Boolean(data && typeof data === "object");
+  } catch (e) {
+    return false;
+  }
+}
+
 function refreshTitleScreen() {
   const preview = document.getElementById("save-preview");
   const loadBtn = document.getElementById("btn-title-load");
@@ -1464,8 +1429,9 @@ function refreshTitleScreen() {
       const data = JSON.parse(raw);
       const rName = data.currentRoom || data.room || "1층 복도";
       const cCount = Array.isArray(data.collected) ? data.collected.length : 0;
+      const dCount = Array.isArray(data.deduced) ? data.deduced.length : 0;
       const savedAt = data.savedAt ? ` (${data.savedAt})` : "";
-      if (preview) preview.textContent = `저장 기록: [${rName}] 단서 ${cCount}개${savedAt} · 달성 엔딩: ${unlocked.length}/3`;
+      if (preview) preview.textContent = `저장 기록: [${rName}] 단서 ${cCount}개 · 진실 ${dCount}개${savedAt} · 엔딩: ${unlocked.length}/3`;
       if (loadBtn) loadBtn.disabled = false;
     } catch (e) {
       if (preview) preview.textContent = "저장 데이터를 읽을 수 없습니다.";
@@ -1493,8 +1459,13 @@ function continueFromTitle() {
 function returnToTitle() {
   titleActive = true;
   prologueActive = false;
+  flashbackActive = false;
+  activeChoices = [];
+  clearHeldInputs();
   const pov = document.getElementById("prologue-overlay");
   if (pov) pov.style.display = "none";
+  const fb = document.getElementById("flashback-overlay");
+  if (fb) fb.style.display = "none";
   ghost.active = false;
   ghost.warning = false;
   lightState = "on";
@@ -1504,10 +1475,10 @@ function returnToTitle() {
 }
 
 /* -------------------------------------------------------------------------
-   9. UI 및 로그 출력 도우미
+   9. UI, 단서 해석 비공개 로직 및 로그 출력 도우미
    ------------------------------------------------------------------------- */
 function say(speaker, text, speakerClass = "c-system", choices = []) {
-  injectEnhancedStylesAndDOM();
+  ensureDynamicDOM();
   const sp = document.getElementById("speaker");
   const msg = document.getElementById("message");
   const chBox = document.getElementById("choices");
@@ -1521,15 +1492,21 @@ function say(speaker, text, speakerClass = "c-system", choices = []) {
     msg.className = "c-npc";
   }
 
-  renderSpeakerPortrait(speaker, speakerClass);
+  renderSpeakerPortrait(speaker);
+
+  activeChoices = Array.isArray(choices) ? choices.slice() : [];
+  if (activeChoices.length > 0) {
+    clearHeldInputs();
+  }
 
   if (chBox) {
     chBox.innerHTML = "";
-    choices.forEach((ch, idx) => {
+    activeChoices.forEach((ch, idx) => {
       const btn = document.createElement("button");
       btn.className = "choice-btn";
       btn.textContent = `[${idx + 1}] ${ch.label}`;
       btn.onclick = () => {
+        activeChoices = [];
         chBox.innerHTML = "";
         ch.action();
       };
@@ -1576,7 +1553,7 @@ function openEndingGallery() {
     {
       key: "TRUE",
       title: "TRUE END — 마지막 방문자와 사라진 가족의 진실",
-      hint: "조건: 단서 9개 이상 + 핵심 진실 조합(윤서/과거 기억) + 인물과의 진실 공유 후 거울 직면"
+      hint: "조건: 단서 9개 이상 + 핵심 진실 4개 이상(윤서/과거 기억 포함) + 인물과 진실 공유 후 거울 직면"
     },
     {
       key: "NORMAL",
@@ -1600,7 +1577,7 @@ function openEndingGallery() {
 }
 
 function useConsumable(type) {
-  if (gameEnded || titleActive || prologueActive) return;
+  if (gameEnded || titleActive || prologueActive || flashbackActive || activeChoices.length > 0) return;
   if (type === "sedative") {
     if ((inventory.sedative || 0) <= 0) {
       say("SYSTEM", "보유한 신경안정제가 없습니다.", "c-system");
@@ -1661,7 +1638,6 @@ function updateHUD() {
     }
   }
 
-  // 구역 조명 상태 HUD
   const lightText = document.getElementById("light-text");
   const lightBar = document.getElementById("light-bar");
   const lightStatus = document.getElementById("light-status");
@@ -1679,10 +1655,10 @@ function updateHUD() {
         lightStatus.textContent = "은신 완료! 불이 꺼져도 숨을 죽이세요";
         lightStatus.style.color = "#9ce0b8";
       } else if (roomHasHiding) {
-        lightStatus.textContent = "지금 즉시 은신처로 이동해 숨으세요 [H]!";
+        lightStatus.textContent = "시야 밖 은신처로 이동해 숨거나 구역을 벗어나세요 [H]!";
         lightStatus.style.color = "#F09BA8";
       } else {
-        lightStatus.textContent = "숨을 곳 없음! 문을 통해 구역을 벗어나세요!";
+        lightStatus.textContent = "숨을 곳 없음! 문을 통해 다른 구역으로 벗어나세요!";
         lightStatus.style.color = "#F09BA8";
       }
     } else if (lightState === "out") {
@@ -1690,7 +1666,7 @@ function updateHUD() {
       lightText.style.color = "#F09BA8";
       lightBar.style.width = "0%";
       lightBar.style.background = "#F09BA8";
-      lightStatus.textContent = ghost.active ? "원혼 추격 중! 은신하거나 다른 구역으로 도주하세요!" : "조명이 꺼진 어두운 공간";
+      lightStatus.textContent = ghost.active ? "13번째 방문자 추격 중! 은신하거나 두 구역 이상 도주!" : "조명이 꺼진 어두운 공간";
       lightStatus.style.color = "#F09BA8";
     } else {
       lightText.textContent = "정상 점등";
@@ -1723,7 +1699,7 @@ function updateHUD() {
       if (flickerBanner) flickerBanner.style.display = isHiding ? "none" : "block";
       if (dangerBanner) dangerBanner.style.display = "none";
     } else if (ghost.active) {
-      st.textContent = isHiding ? `은신 중 (${currentHidingLabel})` : "⚠ 원혼 추격 중!";
+      st.textContent = isHiding ? `은신 중 (${currentHidingLabel})` : "⚠ 13번째 방문자 추격 중!";
       st.style.color = "#F09BA8";
       if (flickerBanner) flickerBanner.style.display = "none";
       if (dangerBanner) dangerBanner.style.display = "block";
@@ -1759,7 +1735,7 @@ function updateHUD() {
   const sedCount = inventory.sedative || 0;
   const btnSed = document.getElementById("btn-use-sedative");
   if (btnSed) {
-    btnSed.textContent = `신경안정제 [1] (${sedCount})`;
+    btnSed.textContent = `신경안정제 [Q] (${sedCount})`;
     btnSed.disabled = sedCount <= 0;
   }
 }
@@ -1772,17 +1748,30 @@ function renderInventoryUI() {
     <div class="bag-row">
       <div class="bag-info">
         <span class="bag-name">신경안정제 × ${sedCount}</span>
-        <span class="bag-desc">복용 시 정신력 +30 회복 (단축키: 1)</span>
+        <span class="bag-desc">복용 시 정신력 +30 회복 (단축키: Q)</span>
       </div>
       <button onclick="useConsumable('sedative')" ${sedCount <= 0 ? "disabled" : ""}>사용</button>
     </div>
     <div class="bag-row">
       <div class="bag-info">
-        <span class="bag-name">생존 수칙 메모</span>
-        <span class="bag-desc">형광등이 깜빡이면(10초) 은신처에서 [H]로 숨거나 다른 구역으로 벗어나세요.</span>
+        <span class="bag-name">수사관 수칙 메모</span>
+        <span class="bag-desc">형광등 점멸(10초) 시 시야 밖 은신처에서 [H]로 숨거나 두 구역 이상 벗어나세요.</span>
       </div>
     </div>
   `;
+}
+
+function isClueInterpreted(clue) {
+  if (!clue || !Array.isArray(clue.truthIds)) return false;
+  return clue.truthIds.some(tid => deduced.includes(tid));
+}
+
+function getClueDisplayDescription(clue) {
+  if (!clue) return "";
+  if (clue.id === "car_memo" && deduced.includes("combo_past")) {
+    return clue.description.replace("□□□", "[[blue:강현우]]");
+  }
+  return clue.description;
 }
 
 function renderClueUI() {
@@ -1795,10 +1784,13 @@ function renderClueUI() {
       collected.forEach(id => {
         const c = CLUES.find(item => item.id === id);
         if (!c) return;
+        const interpreted = isClueInterpreted(c);
         const chip = document.createElement("div");
         chip.className = "clue-chip" + (selectedClues.includes(id) ? " selected" : "");
-        chip.textContent = c.name;
-        chip.title = `${c.importance}\n(연관 힌트: ${c.comboHint})`;
+        chip.textContent = interpreted ? `✔ ${c.name}` : c.name;
+        chip.title = interpreted
+          ? `[해석 완료] ${c.importance}`
+          : `[추리 질문] ${c.comboHint}`;
         chip.onclick = () => toggleSelectClue(id);
         list.appendChild(chip);
       });
@@ -1819,6 +1811,7 @@ function renderClueUI() {
 }
 
 function toggleSelectClue(id) {
+  if (activeChoices.length > 0 || prologueActive || flashbackActive) return;
   const c = CLUES.find(item => item.id === id);
   if (selectedClues.includes(id)) {
     selectedClues = selectedClues.filter(x => x !== id);
@@ -1826,21 +1819,20 @@ function toggleSelectClue(id) {
     if (selectedClues.length >= 2) selectedClues.shift();
     selectedClues.push(id);
     if (c) {
-      say(
-        "중요 단서",
-        `[${c.name}]\n${c.description}\n\n• 핵심 메모: ${c.importance}\n• [[mint:연관 단서 힌트]]: ${c.comboHint}`,
-        "c-clue"
-      );
+      const desc = getClueDisplayDescription(c);
+      const extraLine = isClueInterpreted(c)
+        ? `• [[gold:핵심 해석]]: ${c.importance}`
+        : `• [[mint:추리 질문]]: ${c.comboHint}`;
+      say("수사 수첩", `[${c.name}]\n${desc}\n\n${extraLine}`, "c-clue");
     }
   }
-  if (tutorialStep === 3) advanceTutorialStep();
   renderClueUI();
 }
 
 function combineSelectedClues() {
-  if (gameEnded || titleActive || prologueActive) return;
+  if (gameEnded || titleActive || prologueActive || flashbackActive || activeChoices.length > 0) return;
   if (selectedClues.length < 2) {
-    say("SYSTEM", "수사 수첩에서 서로 연관된 단서 2개를 클릭해 선택한 뒤 조합해 주세요.\n(각 단서를 클릭하면 하단에 [[mint:연관 단서 힌트]]가 표시됩니다.)", "c-system");
+    say("SYSTEM", "수사 수첩에서 서로 연관된 단서 2개를 클릭해 선택한 뒤 조합해 주세요.\n(각 단서를 클릭하면 하단에 [[mint:추리 질문]]이 표시됩니다.)", "c-system");
     return;
   }
   const [a, b] = selectedClues;
@@ -1851,11 +1843,17 @@ function combineSelectedClues() {
   selectedClues = [];
   renderClueUI();
 
-  if (tutorialStep === 3) advanceTutorialStep();
+  if (tutorialStep === 3) {
+    tutorialStep = 0;
+    renderTutorialBanner();
+  }
 
   if (!match) {
-    playSfx("step");
-    say("강현우", "이 두 단서만으로는 아직 명확한 연결고리가 떠오르지 않아. 각 단서 아래의 연관 단서 힌트를 확인해 보자.", "c-hero");
+    playSfx("bump");
+    changeSanity(-5, "잘못된 추리 조합으로 인한 혼란");
+    if (!gameEnded) {
+      say("강현우", "억지로 끼워 맞춘 가설이야... 머리가 지끈거린다. 각 단서의 [[mint:추리 질문]]을 다시 읽어보자. (정신력 -5)", "c-hero");
+    }
     return;
   }
 
@@ -1870,24 +1868,29 @@ function combineSelectedClues() {
   addLog(`새로운 진실 도출: ${match.title}`);
   renderClueUI();
   updateHUD();
+  autoSaveGame();
 
-  say("중요 단서", `증거 조합 성공!\n\n${match.title}\n${match.summary}`, "c-clue");
+  say("진실 해금", `증거 조합 성공! 새로운 진실이 수첩에 기록되었다.\n\n${match.title}\n${match.summary}`, "c-clue");
 }
 
 function openDeductionSummary() {
+  if (activeChoices.length > 0 || prologueActive || flashbackActive) return;
   if (collected.length === 0) {
     say("수사 수첩", "아직 수집된 단서가 없습니다. 주변 사물과 주민들을 조사하세요.", "c-system");
     return;
   }
   const lines = collected.map(id => {
     const c = CLUES.find(item => item.id === id);
-    return `■ ${c.name}: ${c.importance}\n   ↳ 힌트: ${c.comboHint}`;
+    if (isClueInterpreted(c)) {
+      return `■ ${c.name} [해석 완료]: ${c.importance}`;
+    }
+    return `□ ${c.name}: ${c.comboHint}`;
   }).join("\n");
   say("수사 수첩 요약", `현재 확보된 단서 (${collected.length}/${CLUES.length}) · 도출 진실 (${deduced.length}/${COMBINATIONS.length})\n\n${lines}`, "c-clue");
 }
 
 /* -------------------------------------------------------------------------
-   10. 쯔꾸르(RPG Maker) 타일 보간 이동, 충돌 검사, 은신, 구역 이탈 전환
+   10. 타일 보간 이동, 충돌 검사, 은신 및 구역 이탈 전환
    ------------------------------------------------------------------------- */
 function isBlocked(roomName, tx, ty) {
   const r = ROOMS[roomName];
@@ -1930,11 +1933,16 @@ function findNearestWalkable(roomName, sx, sy) {
 }
 
 function setPadDir(dir, isDown) {
+  if (activeChoices.length > 0 || prologueActive || flashbackActive) return;
   padKeys[dir] = isDown;
 }
 
+function isShiftHeld() {
+  return Boolean(keys["ShiftLeft"] || keys["ShiftRight"]);
+}
+
 function startStep(dx, dy, isSprinting = false) {
-  if (gameEnded || titleActive || prologueActive) return false;
+  if (gameEnded || titleActive || prologueActive || flashbackActive || activeChoices.length > 0) return false;
   if (isHiding) {
     if (bumpCooldown <= 0) {
       bumpCooldown = 0.45;
@@ -1987,23 +1995,19 @@ function startStep(dx, dy, isSprinting = false) {
   return true;
 }
 
-function tryMove(dx, dy) {
-  const isSprinting = (keys["shift"] && stamina > 5 && !isHiding);
-  startStep(dx, dy, isSprinting);
-}
-
 function getHeldDirection() {
-  if (keys["arrowup"] || keys["w"] || padKeys.up) return { dx: 0, dy: -1 };
-  if (keys["arrowdown"] || keys["s"] || padKeys.down) return { dx: 0, dy: 1 };
-  if (keys["arrowleft"] || keys["a"] || padKeys.left) return { dx: -1, dy: 0 };
-  if (keys["arrowright"] || keys["d"] || padKeys.right) return { dx: 1, dy: 0 };
+  if (activeChoices.length > 0 || prologueActive || flashbackActive) return null;
+  if (keys["ArrowUp"] || keys["KeyW"] || padKeys.up) return { dx: 0, dy: -1 };
+  if (keys["ArrowDown"] || keys["KeyS"] || padKeys.down) return { dx: 0, dy: 1 };
+  if (keys["ArrowLeft"] || keys["KeyA"] || padKeys.left) return { dx: -1, dy: 0 };
+  if (keys["ArrowRight"] || keys["KeyD"] || padKeys.right) return { dx: 1, dy: 0 };
   return null;
 }
 
 function updatePlayerMovement(dt) {
   if (bumpCooldown > 0) bumpCooldown = Math.max(0, bumpCooldown - dt);
 
-  const isSprinting = (keys["shift"] && stamina > 5 && !isHiding);
+  const isSprinting = (isShiftHeld() && stamina > 5 && !isHiding);
   const moveSpeed = isSprinting ? 270 : 165;
 
   if (player.moving) {
@@ -2021,7 +2025,7 @@ function updatePlayerMovement(dt) {
       player.moving = false;
       checkStepEvents();
 
-      if (!gameEnded && !titleActive && !prologueActive) {
+      if (!gameEnded && !titleActive && !prologueActive && !flashbackActive && activeChoices.length === 0) {
         const held = getHeldDirection();
         if (held) {
           startStep(held.dx, held.dy, isSprinting);
@@ -2045,33 +2049,33 @@ function updatePlayerMovement(dt) {
 }
 
 function handleDoorTransition(door) {
-  // 13층 복도 점멸/추격 중 엘리베이터 봉쇄
-  if (currentRoom === "13층 복도" && door.to === "엘리베이터" && (ghost.active || ghost.warning)) {
+  // 1. 추격/점멸 중 엘리베이터 진입 차단 (두 구역 이상 따돌리지 않으면 승강기 봉쇄)
+  if (door.to === "엘리베이터" && (ghost.active || ghost.warning)) {
     playSfx("ghost");
-    say("SYSTEM", "엘리베이터 문이 굳게 닫혀 열리지 않는다!\n원혼의 기운이 출구를 막고 있다. 복도 서쪽의 배전함 캐비닛에 숨어야 한다 [H]!", "c-ghost");
+    say("SYSTEM", "엘리베이터 문이 굳게 닫혀 열리지 않는다!\n원혼의 기운이 승강기를 붙잡고 있다. 복도나 방의 은신처에 숨어야 한다 [H]!", "c-ghost");
     return;
   }
 
-  // 1304호 현관문 잠금 처리
+  // 2. 1304호 현관문 잠금 (단순 소지가 아닌 진실 조합 해금 또는 윤서 조우 필요)
   if (door.to === "1304호 거실" && currentRoom === "13층 복도" && !flags.door1304Unlocked) {
-    if (flags.has1304Key || flags.metYoonseo || collected.length >= 2) {
+    if (deduced.includes("combo_space") || deduced.includes("combo_coverup") || flags.metYoonseo) {
       flags.door1304Unlocked = true;
       playSfx("door");
-      addLog("굳게 닫혀 있던 1304호 현관문이 열렸다.");
+      addLog("13층의 비밀을 파악하고 굳게 닫혀 있던 1304호 현관문을 열었다.");
     } else {
-      say("SYSTEM", "1304호 철문이 잠겨 있다. 1층 경비실이나 주민, 혹은 복도의 소녀에게서 단서를 먼저 찾아보자.", "c-system");
+      say("SYSTEM", "1304호 철문이 굳게 잠겨 있다.\n13층의 존재와 방화문 봉쇄에 관한 단서들을 조합해 진실을 밝히거나, 복도의 소녀에게 말을 걸어보자.", "c-system");
       return;
     }
   }
 
-  // 아이 방 -> 숨겨진 방 비밀 통로 검증
+  // 3. 아이 방 -> 숨겨진 방 비밀 통로 (반드시 편지 + 일기 조합 진실 3 해금 필요)
   if (door.secret && !flags.secretOpen) {
-    if ((collected.includes("letter") && collected.includes("diary")) || deduced.includes("combo_secret")) {
+    if (deduced.includes("combo_secret")) {
       flags.secretOpen = true;
       playSfx("door");
       addLog("벽장 뒤의 비밀 통로가 열렸다!");
     } else {
-      say("SYSTEM", "벽장 뒤에서 차가운 바람이 새어 나오지만 굳게 막혀 있다.\n집 안의 편지와 일기를 조사해 비밀을 밝혀야 한다.", "c-system");
+      say("SYSTEM", "벽장 뒤에서 차가운 바람이 새어 나오지만 굳게 막혀 있다.\n수사 수첩에서 관련 단서들을 조합해 벽장 뒤의 진실을 먼저 밝혀야 한다.", "c-system");
       return;
     }
   }
@@ -2085,29 +2089,30 @@ function handleDoorTransition(door) {
   playSfx("door");
 
   if (currentRoom === "엘리베이터") {
-    ghost.warning = false;
-    ghost.active = false;
-    ghost.escapeRoomCount = 0;
-    lightState = "on";
     elevatorFloor = prevRoom === "지하 주차장" ? "지하 주차장" : (prevRoom === "13층 복도" ? "13층 복도" : "1층 복도");
     openElevatorMenu();
     return;
   }
 
+  // 추격 중 구역 이동: 1층 복도/경비실이라도 무조건 안전하지 않으며, 2회 이상 구역을 넘어가야 따돌림!
   if (ghost.warning || ghost.active) {
     ghost.escapeRoomCount = (ghost.escapeRoomCount || 0) + 1;
-    const isSafeZone = currentRoom === "1층 복도" || currentRoom === "경비실";
-    const shookOffByDistance = ghost.active && ghost.escapeRoomCount >= 2;
+    const shookOffByDistance = ghost.escapeRoomCount >= 2;
 
-    if (isSafeZone || shookOffByDistance) {
+    if (shookOffByDistance) {
       ghost.warning = false;
       ghost.active = false;
       ghost.escapeRoomCount = 0;
       lightState = "on";
       playSfx("light_on");
-      changeSanity(3, "구역 이탈로 추격 따돌림");
-      addLog("구역을 벗어나 원혼의 추적을 따돌렸다!");
-      say("SYSTEM", "거친 숨을 몰아쉬며 위험 구역을 완전히 벗어났다! 형광등이 다시 정상적으로 켜졌다.", "c-system");
+      changeSanity(4, "연속 구역 이탈로 추격 따돌림");
+      addLog("두 구역을 연속으로 벗어나 13번째 방문자의 추적을 따돌렸다!");
+      say("SYSTEM", "거친 숨을 몰아쉬며 추격자의 시야에서 완전히 벗어났다! 형광등이 다시 정상적으로 켜졌다.", "c-system");
+      if (tutorialStep === 4) {
+        tutorialStep = 0;
+        renderTutorialBanner();
+      }
+      autoSaveGame();
     } else {
       ghost.room = currentRoom;
       const destHasHide = ROOMS[currentRoom] && ROOMS[currentRoom].hidingSpots.length > 0;
@@ -2117,19 +2122,22 @@ function handleDoorTransition(door) {
         ghost.spawnY = door.ty;
         const extraGuide = destHasHide
           ? "이 구역의 은신처에 숨거나 한 구역 더 벗어나세요 [H]!"
-          : "이곳에도 숨을 곳이 없다! 다음 문으로 계속 도망치세요!";
+          : "이곳에도 숨을 곳이 없다! 다음 문으로 한 구역 더 도망치세요!";
         addLog(`${currentRoom}으로 빠져나왔다! ${extraGuide}`);
         say("SYSTEM", `${currentRoom}의 형광등까지 심하게 깜빡인다! ${extraGuide}`, "c-system");
       } else {
         lightState = "out";
         ghost.px = door.tx * TILE;
         ghost.py = door.ty * TILE;
-        addLog(`정전된 어둠을 틈타 원혼이 ${currentRoom}까지 쫓아왔다! 한 구역 더 벗어나거나 숨으세요!`);
+        ghost.entryDelay = 0.85;
+        addLog(`정전된 어둠을 틈타 13번째 방문자가 ${currentRoom}까지 쫓아왔다! 한 구역 더 벗어나거나 숨으세요!`);
+        say("13번째 방문자", `문틈 너머로 무거운 발소리가 따라 들어왔다! 한 구역 더 도망치거나 은신처에 숨어라!`, "c-ghost");
       }
     }
   } else {
     lightState = currentRoom === "1304호 숨겨진 방" ? "out" : "on";
     say("SYSTEM", `${currentRoom}에 들어왔다.`, "c-system");
+    autoSaveGame();
   }
 
   if (currentRoom === "1304호 숨겨진 방" && !flags.visitedSecret) {
@@ -2157,6 +2165,7 @@ function openElevatorMenu() {
           snapCamera();
           playSfx("door");
           say("SYSTEM", "엘리베이터 문이 열리고 1층 복도로 나왔다.", "c-system");
+          autoSaveGame();
           updateHUD();
         }
       },
@@ -2171,6 +2180,7 @@ function openElevatorMenu() {
           snapCamera();
           playSfx("door");
           say("SYSTEM", "축축한 곰팡이 냄새가 진동하는 지하 주차장에 도착했다.", "c-system");
+          autoSaveGame();
           updateHUD();
         }
       },
@@ -2190,6 +2200,7 @@ function openElevatorMenu() {
             addLog("엘리베이터가 굉음을 내며 멈추고, 13층 복도가 모습을 드러냈다.");
           }
           say("강현우", "분명 도면엔 12층까지밖에 없었는데... 복도 형광등이 불안하게 윙윙거리고 있어.", "c-hero");
+          autoSaveGame();
           updateHUD();
         }
       }
@@ -2199,11 +2210,11 @@ function openElevatorMenu() {
 }
 
 function toggleHide() {
-  if (gameEnded || titleActive || prologueActive) return;
+  if (gameEnded || titleActive || prologueActive || flashbackActive || activeChoices.length > 0) return;
   const r = ROOMS[currentRoom];
   if (isHiding) {
     if (ghost.active || lightState === "flicker") {
-      say("SYSTEM", "아직 바깥에 원혼의 기척이 남아 있습니다! 불이 다시 켜질 때까지 숨을 죽이세요.", "c-ghost");
+      say("SYSTEM", "아직 바깥에 추격자의 발소리가 남아 있습니다! 불이 다시 켜질 때까지 숨을 죽이세요.", "c-ghost");
       return;
     }
     isHiding = false;
@@ -2224,6 +2235,16 @@ function toggleHide() {
     return;
   }
 
+  // 추격자가 코앞(시야 2.3타일 이내)에서 보고 있을 때는 은신 발각!
+  if (ghost.active && ghost.room === currentRoom && ghost.entryDelay <= 0) {
+    const dist = Math.hypot(ghost.px - player.px, ghost.py - player.py);
+    if (dist < TILE * 2.3) {
+      playSfx("ghost");
+      say("13번째 방문자", "너무 가깝다! 추격자가 지켜보는 앞에서 은신처에 들어갈 수 없다!", "c-ghost");
+      return;
+    }
+  }
+
   isHiding = true;
   player.moving = false;
   currentHidingLabel = spot.label;
@@ -2231,7 +2252,8 @@ function toggleHide() {
   addLog(`${spot.label} 안에 몸을 숨겼다.`);
 
   if (tutorialStep === 4) {
-    advanceTutorialStep();
+    tutorialStep = 0;
+    renderTutorialBanner();
   }
 
   if (lightState === "flicker") {
@@ -2243,60 +2265,60 @@ function toggleHide() {
 }
 
 function checkStepEvents() {
-  // 지하 주차장: 형광등 점멸 전조 후 원혼 출현 (기둥까지 달리거나 1층 계단으로 구역 이탈 유도)
+  // 지하 주차장: 수사 메모 획득 후 출구 이동 시 첫 형광등 점멸 경고 (튜토리얼 4단계 연동)
   if (currentRoom === "지하 주차장" && collected.includes("car_memo") && !flags.parkingGhostSeen && player.x >= 12) {
     flags.parkingGhostSeen = true;
     startGhostWarning(
       "지하 주차장",
       18,
       4,
-      "지하 주차장 형광등이 지지직거리며 심하게 깜빡이기 시작했다! 입구 쪽 콘크리트 기둥에 숨거나 1층 계단으로 구역을 벗어나라 [H]!",
-      "형광등이 펑 하고 터지며 정전되었다! 어둠 속에서 붉은 눈빛의 원혼이 다가온다!"
+      "지하 주차장 형광등이 지지직거리며 심하게 깜빡이기 시작했다! 콘크리트 기둥 뒤에 숨거나 1층 계단으로 빠르게 벗어나라 [H]!",
+      "형광등이 펑 하고 터지며 정전되었다! 어둠 속에서 13번째 방문자가 발소리를 울리며 다가온다!"
     );
     return;
   }
 
-  // 13층 복도: 형광등 점멸 전조 후 원혼 출현 (서쪽 배전함 캐비닛까지 질주 유도)
+  // 13층 복도: 단서 4개 이상 확보 후 중앙 통과 시 점멸 경고
   if (currentRoom === "13층 복도" && collected.length >= 4 && !flags.hallGhostSeen && player.x >= 11 && player.x <= 18) {
     flags.hallGhostSeen = true;
     startGhostWarning(
       "13층 복도",
       22,
       4,
-      "13층 복도의 형광등이 불규칙하게 점멸하며 스파크가 튄다! 복도 서쪽의 배전함 캐비닛까지 달려 숨거나 1304호 안으로 피신하라 [H]!",
-      "복도 조명이 완전히 꺼졌다! 암전 속에서 피 묻은 원혼이 비명과 함께 달려온다!"
+      "13층 복도의 형광등이 불규칙하게 점멸하며 스파크가 튄다! 서둘러 은신처를 찾거나 문을 통해 구역을 벗어나라 [H]!",
+      "복도 조명이 완전히 꺼졌다! 암전 속에서 13번째 방문자가 거친 숨소리와 함께 달려온다!"
     );
     return;
   }
 
-  // 1304호 안방에서 병원 기록 확보 후 나올 때: 방 안에 은신처가 없으므로 거실로 구역 이탈 유도!
+  // 1304호 안방: 병원 기록 확보 후 나올 때 점멸 경고 (은신처 없는 방 -> 거실 장롱으로 이탈 유도)
   if (currentRoom === "1304호 안방" && collected.includes("medical") && !flags.masterGhostSeen && player.x <= 6) {
     flags.masterGhostSeen = true;
     startGhostWarning(
       "1304호 안방",
       13,
       4,
-      "안방 형광등이 격렬하게 깜빡이기 시작한다! 이 방에는 몸을 숨길 곳이 없다! 문을 통해 거실로 벗어나 장롱에 숨어라!",
-      "안방 불이 꺼지며 어둠 속에서 원혼이 솟아올랐다!"
+      "안방 형광등이 격렬하게 깜빡이기 시작한다! 이 방에는 몸을 숨길 곳이 없다! 문을 통해 거실로 벗어나 숨어라!",
+      "안방 불이 꺼지며 어둠 속에서 13번째 방문자가 솟아올랐다!"
     );
     return;
   }
 
-  // 1304호 거실: 형광등 점멸 전조 후 원혼 출현
+  // 1304호 거실: 방문자 명부 획득 후 귀환 시 점멸 경고
   if (currentRoom === "1304호 거실" && collected.includes("ledger") && !flags.houseGhostSeen) {
     flags.houseGhostSeen = true;
     startGhostWarning(
       "1304호 거실",
       15,
       4,
-      "현관 쪽에서 세 번의 노크 소리가 울리더니 거실 형광등이 심하게 깜빡인다! 대형 장롱에 숨거나 복도로 벗어나라 [H]!",
-      "거실 불이 완전히 꺼졌다! 정전된 거실로 원혼이 들이닥쳤다!"
+      "현관 쪽에서 세 번의 노크 소리가 울리더니 거실 형광등이 심하게 깜빡인다! 시야 밖 은신처에 숨거나 복도로 벗어나라 [H]!",
+      "거실 불이 완전히 꺼졌다! 정전된 거실로 13번째 방문자가 들이닥쳤다!"
     );
   }
 }
 
 /* -------------------------------------------------------------------------
-   11. 쯔꾸르 전방 타일 정밀 조사 & 상호작용
+   11. 전방 타일 정밀 조사 & NPC 단계별 상호작용
    ------------------------------------------------------------------------- */
 function findInteractableAt(tx, ty) {
   const r = ROOMS[currentRoom];
@@ -2355,7 +2377,7 @@ function getBestInteractTarget() {
 }
 
 function interact() {
-  if (gameEnded || titleActive || prologueActive) return;
+  if (gameEnded || titleActive || prologueActive || flashbackActive || activeChoices.length > 0) return;
   if (isHiding) {
     toggleHide();
     return;
@@ -2405,9 +2427,18 @@ function interact() {
     addLog(`단서 획득: [${clue.name}]`);
     renderClueUI();
     updateHUD();
+
+    // 단서 2개 수집 시 상황 트리거로 튜토리얼 3단계 안내
+    if (collected.length === 2 && !flags.tutorialStep3Shown && !flags.tutorialDone) {
+      flags.tutorialStep3Shown = true;
+      startTutorialStep(3);
+    }
+
+    autoSaveGame();
+
     say(
       "중요 단서",
-      `[${clue.name}]을(를) 발견했다!\n\n${clue.description}\n\n• 수첩 기록: ${clue.importance}\n• [[mint:연관 단서 힌트]]: ${clue.comboHint}`,
+      `[${clue.name}]을(를) 발견했다!\n\n${getClueDisplayDescription(clue)}\n\n• [[mint:추리 질문]]: ${clue.comboHint}`,
       "c-clue"
     );
 
@@ -2425,6 +2456,7 @@ function interact() {
     addLog(`소지품 획득: [${fItem.name}]`);
     renderInventoryUI();
     updateHUD();
+    autoSaveGame();
     say("SYSTEM", `소지품 [${fItem.name}]을(를) 획득했다!\n\n${fItem.desc}`, "c-system");
     return;
   }
@@ -2443,6 +2475,11 @@ function interact() {
       if (prop.sanityDelta) {
         changeSanity(prop.sanityDelta, prop.sanityReason);
       }
+      if (examinedProps.length >= PROPS.length && !flags.allPropsExamined) {
+        flags.allPropsExamined = true;
+        changeSanity(10, "아파트 전체 현장 정밀 조사 완료");
+        addLog("모든 환경 단서(8/8)를 조사해 사건의 전체 맥락을 꿰뚫었다!");
+      }
     }
     playSfx("step");
     updateHUD();
@@ -2451,28 +2488,24 @@ function interact() {
   }
 
   if (hit.type === "hiding") {
-    say("SYSTEM", `[${hit.target.label}]이다. 형광등이 깜빡이면 [H] 키를 눌러 안에 숨을 수 있다.`, "c-system");
+    say("SYSTEM", `[${hit.target.label}]이다. 형광등이 깜빡이면 추격자의 시야 밖에서 [H] 키를 눌러 숨을 수 있다.`, "c-system");
     return;
   }
 
   if (hit.type === "secret_wall") {
-    if (collected.includes("letter") && collected.includes("diary")) {
+    if (deduced.includes("combo_secret")) {
       flags.secretOpen = true;
       playSfx("door");
       addLog("벽장 뒤 숨겨진 방의 문을 열었다.");
-      say("SYSTEM", "편지와 일기의 내용을 떠올리며 벽장 뒤편을 밀자, 숨겨진 방으로 이어지는 비밀 문이 열렸다!", "c-system");
+      say("SYSTEM", "도출해낸 진실을 바탕으로 벽장 뒤편을 밀자, 숨겨진 방으로 이어지는 비밀 문이 열렸다!", "c-system");
     } else {
-      say("강현우", "벽장 뒤에서 서늘한 바람이 새어 나와. 뭔가 숨겨진 공간이 있는 것 같은데...", "c-hero");
+      say("강현우", "벽장 뒤에서 서늘한 바람이 새어 나와. 뭔가 숨겨진 공간이 있는 것 같은데... 먼저 관련 단서들을 조합해 비밀을 밝혀야겠어.", "c-hero");
     }
   }
 }
 
 function talkToNPC(npc) {
   if (npc.id === "park") {
-    if (flags.parkHostile && !collected.includes("guard_log") && !collected.includes("car_memo")) {
-      say("박만식 (경비원)", "더는 할 말 없소! 어서 이 아파트에서 나가시오!", "c-npc");
-      return;
-    }
     const choices = [
       {
         label: "13년 전 1304호 가족 실종 사건에 대해 묻는다",
@@ -2483,51 +2516,41 @@ function talkToNPC(npc) {
         }
       },
       {
-        label: "1304호에 들어갈 수 있는 열쇠가 있는지 묻는다",
+        label: "1985년 사건 당일 출동했던 경찰 기록이나 차량에 대해 묻는다",
         action: () => {
-          flags.has1304Key = true;
-          addLog("박만식으로부터 1304호 예비 열쇠 정보를 얻었다.");
-          say("박만식 (경비원)", "...형사 양반이 끝까지 가겠다면 말릴 수 없지. 1304호 문은 녹슬어서 힘껏 밀면 열릴 거요. 그리고 형광등이 깜빡거리면 절대 그 자리에 서 있지 말고 숨으시오.", "c-npc");
+          flags.askedParkCar = true;
+          addLog("박만식으로부터 지하 주차장에 방치된 옛 순찰차 이야기를 들었다.");
+          say("박만식 (경비원)", "그날 선임 순경 한 분이 실종되면서 함께 온 지원 순찰차가 지하 주차장 구석에 오랫동안 방치됐었소... 유류품 정리가 덜 된 채 그대로 있을지도 모르지.", "c-npc");
         }
       }
     ];
-    if (collected.includes("blueprint") || collected.includes("guard_log") || deduced.includes("combo_space")) {
+
+    if (deduced.includes("combo_coverup") || deduced.includes("combo_space")) {
       choices.push({
-        label: "[증거 제시] 도면에 없는 13층과 방화문 봉쇄 기록을 추궁한다",
+        label: "[진실 제시] 도면에 없는 13층과 방화문 봉쇄 기록을 추궁한다",
         action: () => {
-          flags.parkConfessed = true;
-          flags.parkHostile = false;
-          flags.has1304Key = true;
-          addLog("박만식이 1985년 그날 밤 방화문을 잠근 은폐 사실을 고백했다.");
-          say("박만식 (경비원)", "...결국 알아냈군. 그날 밤 1304호 아버지가 빚과 망상에 미쳐 가족을 가뒀어. 난 무서워서 방화문을 잠그고 신고를 늦췄지. 부디 그 아이의 원한을 풀어주게...", "c-npc");
-        }
-      });
-    } else if (collected.includes("car_memo")) {
-      choices.push({
-        label: "[수첩 제시] 13년 전 구조된 순경의 아들 '강현우'에 대해 묻는다",
-        action: () => {
-          flags.parkConfessed = true;
-          flags.has1304Key = true;
-          addLog("박만식이 강현우와 그의 아버지(당시 순경)에 대한 기억을 증언했다.");
-          say("박만식 (경비원)", "그 수첩... 강 순경님 것이잖소! 그날 밤 강 순경님이 아이를 구하려 13층에 올라갔다가 실종됐고, 아드님만 홀로 살아남았소... 자네가 바로 그 아이였단 말인가!", "c-npc");
-        }
-      });
-    } else {
-      choices.push({
-        label: "협조하지 않으면 공무집행방해로 체포하겠다고 압박한다",
-        action: () => {
-          flags.parkHostile = true;
-          changeSanity(-8, "경비원과의 마찰");
-          say("박만식 (경비원)", "맘대로 하쇼! 난 이제 한 마디도 안 할 테니까!", "c-npc");
+          flags.parkPartial = true;
+          flags.door1304Unlocked = true;
+          addLog("박만식이 1985년 그날 밤 방화문을 잠근 1차 은폐 사실을 인정했다.");
+          say("박만식 (경비원)", "...결국 알아냈군. 그날 밤 1304호 아버지가 빚과 망상에 미쳐 가족을 가뒀어. 난 무서워서 방화문을 잠그고 신고를 늦췄지. 하지만 그날 밤 현장에 있던 소년이 누구였는지는 나도 입을 다물 수밖에 없었소...", "c-npc");
         }
       });
     }
+
+    if (flags.parkPartial && (deduced.includes("combo_past") || collected.includes("ledger"))) {
+      choices.push({
+        label: "[기억 공유] 실종된 강 순경과 13년 전 구조된 아들에 대해 묻는다",
+        action: () => {
+          flags.parkConfessed = true;
+          changeSanity(10, "박만식의 완전한 참회와 증언");
+          addLog("박만식이 강현우와 그의 아버지(강 순경)에 대한 모든 진실을 고백했다.");
+          say("박만식 (경비원)", "자네 얼굴을 보니 이제야 알겠구먼... 그날 밤 강 순경님이 윤서를 구하려 13층에 올라갔다가 실종됐고, 아드님만 홀로 살아남았소. 부디 13층의 비극을 끝내주게!", "c-npc");
+        }
+      });
+    }
+
     say("박만식 (경비원)", "이 밤중에 무슨 일이십니까? 은하아파트는 곧 철거될 건물입니다. 13층 같은 건 애초에 없어요.", "c-npc", choices);
   } else if (npc.id === "han") {
-    if (flags.hanHostile && !collected.includes("medical") && !collected.includes("photo")) {
-      say("한미정 (주민)", "제발 저한테 말 걸지 마세요... 위층에서 또 발소리가 들린단 말이에요.", "c-npc");
-      return;
-    }
     const choices = [
       {
         label: "밤마다 위층에서 들린다는 발소리에 대해 묻는다",
@@ -2536,39 +2559,29 @@ function talkToNPC(npc) {
           addLog("주민 한미정에게 매일 밤 11시 47분마다 들리는 울음소리를 들었다.");
           say("한미정 (주민)", "저는 1204호에 살아요. 그런데 매일 밤 11시 47분만 되면 천장 위... 존재하지도 않는 13층에서 여자아이 울음소리와 노크 소리가 들려요. 그 직전엔 꼭 복도 형광등이 깜빡거리더라고요.", "c-npc");
         }
+      },
+      {
+        label: "13년째 미뤄진 아파트 철거와 1304호 소문에 대해 묻는다",
+        action: () => {
+          flags.talkedHan = true;
+          addLog("한미정으로부터 철거 측량 인부들이 13층에서 실종되었던 이야기를 들었다.");
+          say("한미정 (주민)", "재개발 조합 사람들이 철거 측량을 하러 올라갔다가 그날 밤 이후로 자취를 감췄대요. 그래서 다들 이 아파트를 떠나고 저만 남았어요...", "c-npc");
+        }
       }
     ];
-    if (collected.includes("medical") || collected.includes("photo") || deduced.includes("combo_yoonseo")) {
+
+    if (deduced.includes("combo_yoonseo") || collected.includes("medical")) {
       choices.push({
-        label: "[단서 제시] '윤서'라는 아이에 대해 알고 있는지 묻는다",
+        label: "[진실 제시] '윤서'라는 아이에 대해 알고 있는지 묻는다",
         action: () => {
           flags.hanTruth = true;
-          flags.hanHostile = false;
-          flags.has1304Key = true;
+          changeSanity(6, "한미정의 진심 어린 증언");
           addLog("한미정이 윤서의 옛 피아노 선생이었음을 밝히고 진실을 증언했다.");
           say("한미정 (주민)", "윤서 이름을 어떻게 아세요...? 저는 13년 전 윤서의 피아노 선생님이었어요. 윤서는 착하고 여린 아이였어요. 그날 밤 윤서를 구하러 갔던 한 소년도 있었는데...", "c-npc");
         }
       });
-    } else if (collected.includes("newspaper")) {
-      choices.push({
-        label: "[신문 제시] 13년째 미뤄진 아파트 철거와 괴담에 대해 묻는다",
-        action: () => {
-          flags.talkedHan = true;
-          flags.has1304Key = true;
-          addLog("한미정으로부터 철거 인부들이 13층에서 실종되었던 사건 이야기를 들었다.");
-          say("한미정 (주민)", "재개발 조합 사람들이 철거 측량을 하러 올라갔다가 그날 밤 이후로 자취를 감췄대요. 그래서 다들 이 아파트를 떠나고 저만 남았어요...", "c-npc");
-        }
-      });
-    } else {
-      choices.push({
-        label: "거짓말을 하면 용의선상에 올리겠다고 위협한다",
-        action: () => {
-          flags.hanHostile = true;
-          changeSanity(-8, "주민의 공포와 거부");
-          say("한미정 (주민)", "아, 아니에요! 저는 아무것도 몰라요! 저리 가세요!", "c-npc");
-        }
-      });
     }
+
     say("한미정 (주민)", "형사님이신가요...? 제발 저 좀 살려주세요. 12층 위에는 아무것도 없어야 하는데, 누군가 계속 문을 두드려요.", "c-npc", choices);
   } else if (npc.id === "yoonseo") {
     const choices = [
@@ -2577,11 +2590,12 @@ function talkToNPC(npc) {
         action: () => {
           flags.metYoonseo = true;
           flags.door1304Unlocked = true;
-          addLog("13층 복도의 소녀 윤서와 대화했다.");
-          say("윤서", "...아저씨도 13번째 방문자인가요? 우리 집 문은 열려 있어요. 하지만 형광등이 깜빡이면 꼭 숨어야 해요... 아빠가 오고 있다는 신호니까요.", "c-npc");
+          addLog("13층 복도의 소녀 윤서와 대화해 1304호 문을 열 수 있게 되었다.");
+          say("윤서", "...아저씨도 13번째 방문자인가요? 우리 집 문은 열어 둘게요. 하지만 형광등이 깜빡이면 꼭 숨어야 해요... 망가진 아빠가 오고 있다는 신호니까요.", "c-npc");
         }
       }
     ];
+
     if (deduced.includes("combo_yoonseo") || deduced.includes("combo_past")) {
       choices.push({
         label: "\"윤서야, 이제 무서워하지 마. 그날 밤의 진실을 모두 기억해냈어.\"",
@@ -2593,7 +2607,7 @@ function talkToNPC(npc) {
           ghost.escapeRoomCount = 0;
           lightState = "on";
           changeSanity(15, "윤서의 원한 완화");
-          addLog("윤서에게 진실을 전하여 그녀의 원념을 진정시켰다.");
+          addLog("윤서에게 진실을 전하여 그녀의 두려움을 진정시켰다.");
           say("윤서", "...정말 기억해 주신 거예요? 13년 동안 아무도 제 목소리를 들어주지 않았어요. 숨겨진 방의 거울을 봐주세요... 모든 진실이 거기 있어요.", "c-npc");
         }
       });
@@ -2601,23 +2615,24 @@ function talkToNPC(npc) {
       choices.push({
         label: "\"원혼이라면 당장 사라져라!\" (적대적으로 경고한다)",
         action: () => {
-          changeSanity(-18, "원혼의 분노 촉발");
+          changeSanity(-18, "13번째 방문자의 분노 촉발");
           startGhostWarning(
             "13층 복도",
             22,
             4,
-            "윤서가 고개를 숙이자 천장 형광등이 격렬하게 깜빡이기 시작한다! 복도 서쪽 캐비닛으로 달려 숨어야 한다 [H]!",
-            "형광등이 산산조각 나며 정전되었다! 붉은 원혼이 비명을 지르며 달려온다!"
+            "윤서가 겁에 질려 물러서자 복도 끝에서 무거운 발소리와 함께 형광등이 격렬하게 깜빡이기 시작한다! 은신처를 찾거나 구역을 벗어나라 [H]!",
+            "형광등이 산산조각 나며 정전되었다! 광기에 잠식된 13번째 방문자가 비명을 지르며 달려온다!"
           );
         }
       });
     }
+
     say("윤서", "......똑, 똑, 똑. 열두 번까지는 참았는데, 열세 번째 노크가 시작됐어요.", "c-npc", choices);
   }
 }
 
 /* -------------------------------------------------------------------------
-   12. 형광등 점멸 전조 -> 정전 -> 원혼 추격 AI
+   12. 형광등 점멸 전조 -> 정전 -> 13번째 방문자 BFS 추격 AI
    ------------------------------------------------------------------------- */
 function startGhostWarning(roomName, gx, gy, warningText, chaseText) {
   if (gameEnded) return;
@@ -2632,6 +2647,13 @@ function startGhostWarning(roomName, gx, gy, warningText, chaseText) {
   ghost.spawnY = gy;
   ghost.chaseText = chaseText;
   ghost.escapeRoomCount = 0;
+  ghost.entryDelay = 0;
+
+  // 첫 점멸 이벤트 발생 시 상황 트리거로 튜토리얼 4단계 표시
+  if (!flags.tutorialStep4Shown && !flags.tutorialDone) {
+    flags.tutorialStep4Shown = true;
+    startTutorialStep(4);
+  }
 
   playSfx("flicker");
   addLog(warningText);
@@ -2640,7 +2662,7 @@ function startGhostWarning(roomName, gx, gy, warningText, chaseText) {
 }
 
 function updateLightingAndGhost(dt) {
-  if (gameEnded || titleActive || prologueActive) return;
+  if (gameEnded || titleActive || prologueActive || flashbackActive) return;
 
   // 1. 형광등 점멸 전조 카운트다운 (10초)
   if (lightState === "flicker" && ghost.warning) {
@@ -2653,79 +2675,92 @@ function updateLightingAndGhost(dt) {
     }
 
     if (flickerTimer <= 0) {
-      // 전조 종료 -> 정전(암전) & 원혼 실체화
       ghost.warning = false;
       ghost.active = true;
       ghost.room = currentRoom;
-      ghost.px = ghost.spawnX * TILE;
-      ghost.py = ghost.spawnY * TILE;
+      const safeSpawn = findNearestWalkable(currentRoom, ghost.spawnX, ghost.spawnY);
+      ghost.px = safeSpawn.x * TILE;
+      ghost.py = safeSpawn.y * TILE;
       ghost.patrolTimer = 0;
+      ghost.entryDelay = 0;
       lightState = "out";
       playSfx("ghost");
 
       if (isHiding) {
-        addLog("형광등이 꺼졌지만 제때 몸을 숨긴 덕분에 원혼이 위치를 눈치채지 못했다.");
+        addLog("형광등이 꺼졌지만 제때 몸을 숨긴 덕분에 추격자가 위치를 눈치채지 못했다.");
         say("SYSTEM", "조명이 완전히 꺼지고 어둠 속에서 무거운 발소리가 다가온다... 숨을 죽이고 기다리자.", "c-system");
       } else {
         addLog(ghost.chaseText);
-        say("13층의 원혼", ghost.chaseText, "c-ghost");
+        say("13번째 방문자", ghost.chaseText, "c-ghost");
       }
       updateHUD();
     }
     return;
   }
 
-  // 2. 원혼 추격/배회 AI
+  // 2. 13번째 방문자 추격/배회 AI (타일 BFS 길찾기 적용)
   if (!ghost.active || ghost.room !== currentRoom) return;
 
   ghost.heartbeatCooldown -= dt;
   if (ghost.heartbeatCooldown <= 0) {
     playSfx("heartbeat");
-    ghost.heartbeatCooldown = 1.05;
+    ghost.heartbeatCooldown = 0.95;
   }
 
-  const targetX = player.px;
-  const targetY = player.py;
+  if (ghost.entryDelay > 0) {
+    ghost.entryDelay = Math.max(0, ghost.entryDelay - dt);
+    return;
+  }
 
   if (isHiding) {
     ghost.patrolTimer += dt;
-    ghost.px += Math.sin(animTick * 0.08) * 35 * dt;
-    ghost.py += Math.cos(animTick * 0.06) * 25 * dt;
-    if (ghost.patrolTimer >= 4.0) {
+    ghost.px += Math.sin(animTick * 0.08) * 32 * dt;
+    ghost.py += Math.cos(animTick * 0.06) * 22 * dt;
+    if (ghost.patrolTimer >= 5.5) {
       ghost.active = false;
       ghost.escapeRoomCount = 0;
       lightState = "on";
       playSfx("light_on");
       changeSanity(4, "은신 성공으로 위기 극복");
-      addLog("원혼이 어둠 속으로 물러나고, 천장 형광등이 다시 켜졌다.");
+      addLog("13번째 방문자가 어둠 속으로 물러나고, 천장 형광등이 다시 켜졌다.");
       say("SYSTEM", "발소리가 멀어지고 지지직거리는 소리와 함께 형광등이 다시 켜졌다!", "c-system");
       updateHUD();
+      autoSaveGame();
     }
     return;
   }
 
+  // BFS로 다음 이동 타일 산출 (벽과 가구를 우회해 추격)
+  const gxTile = Math.max(1, Math.min(ROOMS[currentRoom].cols - 2, Math.round(ghost.px / TILE)));
+  const gyTile = Math.max(1, Math.min(ROOMS[currentRoom].rows - 2, Math.round(ghost.py / TILE)));
+  const nextStep = getNextBfsStep(currentRoom, gxTile, gyTile, player.x, player.y);
+
+  const targetX = (nextStep.x === player.x && nextStep.y === player.y) ? player.px : nextStep.x * TILE;
+  const targetY = (nextStep.x === player.x && nextStep.y === player.y) ? player.py : nextStep.y * TILE;
+
   const dx = targetX - ghost.px;
   const dy = targetY - ghost.py;
-  const dist = Math.hypot(dx, dy);
+  const distToStep = Math.hypot(dx, dy);
+  const directDist = Math.hypot(player.px - ghost.px, player.py - ghost.py);
 
-  const speedPx = (ghost.speed + (sanity < 40 ? 0.5 : 0)) * TILE;
+  const speedPx = (ghost.speed + (sanity < 40 ? 0.35 : 0)) * TILE;
 
-  if (dist > 1) {
-    ghost.px += (dx / dist) * speedPx * dt;
-    ghost.py += (dy / dist) * speedPx * dt;
+  if (distToStep > 1) {
+    ghost.px += (dx / distToStep) * speedPx * dt;
+    ghost.py += (dy / distToStep) * speedPx * dt;
   }
 
-  if (dist < TILE * 3.2) {
-    sanity = Math.max(0, sanity - 4.5 * dt);
+  if (directDist < TILE * 3.0) {
+    sanity = Math.max(0, sanity - 5.0 * dt);
     updateHUD();
     if (sanity <= 0) {
-      triggerGameOver("정신 붕괴", "원혼의 저주에 정신을 잠식당한 강현우는 그 자리에서 무너지고 말았다.");
+      triggerGameOver("정신 붕괴", "13번째 방문자의 광기에 정신을 잠식당한 강현우는 그 자리에서 무너지고 말았다.");
       return;
     }
   }
 
-  if (dist < TILE * 0.55) {
-    triggerGameOver("13층의 제물", "제때 숨지 못한 강현우는 붉은 원혼의 손아귀에 붙잡혀 13층의 어둠 속으로 끌려갔다.");
+  if (directDist < TILE * 0.55) {
+    triggerGameOver("13층의 제물", "제때 숨거나 따돌리지 못한 강현우는 13번째 방문자의 손아귀에 붙잡혀 13층의 어둠 속으로 끌려갔다.");
   }
 }
 
@@ -2735,7 +2770,7 @@ function updateLightingAndGhost(dt) {
 function triggerFinalMirrorEvent() {
   const hasEnoughClues = collected.length >= 9;
   const hasTruthCombos = deduced.length >= 4 && (deduced.includes("combo_yoonseo") || deduced.includes("combo_past"));
-  const hasHumanConnection = flags.savedYoonseo || (flags.parkConfessed && flags.hanTruth);
+  const hasHumanConnection = flags.savedYoonseo || (flags.parkConfessed && flags.hanTruth) || flags.allPropsExamined;
 
   const choices = [
     {
@@ -2761,7 +2796,7 @@ function triggerFinalMirrorEvent() {
       }
     },
     {
-      label: "[환청 굴복] 문밖에서 들리는 세 번의 노크 소리에 문을 연다",
+      label: "[노크 응답] 문밖에서 들리는 익숙한 목소리를 따라 문을 연다",
       action: () => {
         triggerEnding("BAD");
       }
@@ -2790,7 +2825,7 @@ function triggerEnding(type) {
     addLog("엔딩 달성: [TRUE END - 마지막 방문자와 사라진 가족의 진실]");
     say(
       "TRUE END — 마지막 방문자와 사라진 가족의 진실",
-      "거울이 산산조각 나며 봉인되어 있던 13년 전의 기억이 되살아났다.\n\n" +
+      "거울이 산산조각 나며 봉인되어 있던 13년 전의 기억이 완전히 되살아났다.\n\n" +
       "1985년 10월 13일, 아버지의 광기 속에서 윤서를 구하려다 비상구 앞에 쓰러졌던 소년이 바로 강현우 자신이었다. " +
       "윤서는 악령이 아니라, 자신을 기억해 줄 마지막 방문자를 13년 동안 기다려 온 소녀의 영혼이었다.\n\n" +
       "강현우가 윤서의 이름을 부르며 진실을 세상에 밝히겠다고 맹세하자, 13층의 붉은 어둠이 걷히고 방문자 명부의 마지막 줄이 사라졌다.\n" +
@@ -2839,32 +2874,34 @@ function triggerGameOver(title, reason) {
   endingType = null;
   ghost.warning = false;
   ghost.active = false;
+  clearHeldInputs();
   playSfx("ghost");
   updateHUD();
   addLog(`GAME OVER - ${title}`);
+
+  const choices = [];
+  if (hasValidSaveData()) {
+    choices.push({ label: "마지막 저장 불러오기", action: loadGame });
+  }
+  choices.push({ label: "새 게임 시작", action: () => resetGame(false) });
+  choices.push({ label: "타이틀 화면으로 이동", action: returnToTitle });
+
   say(
     `GAME OVER — ${title}`,
     `${reason}\n\n은하아파트 13층의 기록에는 또 한 명의 실종자가 추가되었다.`,
     "c-ghost",
-    [
-      { label: "마지막 저장 불러오기", action: loadGame },
-      { label: "새 게임 시작", action: () => resetGame(false) }
-    ]
+    choices
   );
 }
 
 /* -------------------------------------------------------------------------
-   14. 저장 및 불러오기 (localStorage · 이전 버전 세이브 완벽 호환)
+   14. 저장 · 자동 저장 및 불러오기 (소프트락 방지 및 위험 상태 저장 제한)
    ------------------------------------------------------------------------- */
-function saveGame() {
-  if (gameEnded) {
-    say("SYSTEM", "이미 엔딩 또는 게임 오버에 도달한 상태입니다.", "c-system");
-    return;
-  }
+function buildSavePayload() {
   const now = new Date();
   const savedAt = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
-  const data = {
-    version: "1.2.0",
+  return {
+    version: GAME_VERSION,
     savedAt,
     currentRoom,
     player: { x: player.x, y: player.y, dir: player.dir },
@@ -2877,16 +2914,37 @@ function saveGame() {
     inventory,
     flags
   };
+}
+
+function autoSaveGame() {
+  if (gameEnded || titleActive || ghost.warning || ghost.active) return;
+  try {
+    const data = buildSavePayload();
+    localStorage.setItem("visitorSave", JSON.stringify(data));
+  } catch (e) {}
+}
+
+function saveGame() {
+  if (gameEnded) {
+    say("SYSTEM", "이미 엔딩 또는 게임 오버에 도달한 상태입니다.", "c-system");
+    return;
+  }
+  if (ghost.warning || ghost.active) {
+    playSfx("bump");
+    say("SYSTEM", "형광등이 점멸하거나 추격자가 쫓아오는 위기 상황 중에는 저장할 수 없습니다!", "c-ghost");
+    return;
+  }
+  const data = buildSavePayload();
   localStorage.setItem("visitorSave", JSON.stringify(data));
   playSfx("clue");
-  addLog(`현재 수사 진행 상황을 저장했다. (${savedAt})`);
-  say("SYSTEM", `수사 진행 상황이 브라우저에 안전하게 저장되었습니다. (${savedAt})`, "c-system");
+  addLog(`현재 수사 진행 상황을 저장했다. (${data.savedAt})`);
+  say("SYSTEM", `수사 진행 상황이 브라우저에 안전하게 저장되었습니다. (${data.savedAt})`, "c-system");
 }
 
 function loadGame() {
   const raw = localStorage.getItem("visitorSave");
   if (!raw) {
-    say("SYSTEM", "저장된 데이터가 없습니다.", "c-system");
+    say("SYSTEM", "저장된 데이터가 없습니다. 새 게임을 시작해 주세요.", "c-system");
     return;
   }
   try {
@@ -2915,8 +2973,8 @@ function loadGame() {
     syncPlayerPixelToGrid();
     snapCamera();
 
-    sanity = typeof data.sanity === "number" ? data.sanity : 100;
-    stamina = typeof data.stamina === "number" ? data.stamina : 100;
+    sanity = typeof data.sanity === "number" ? Math.max(10, Math.min(100, data.sanity)) : 100;
+    stamina = typeof data.stamina === "number" ? Math.max(0, Math.min(100, data.stamina)) : 100;
     collected = Array.isArray(data.collected) ? data.collected : [];
     deduced = Array.isArray(data.deduced) ? data.deduced : [];
     pickedFieldItems = Array.isArray(data.pickedFieldItems) ? data.pickedFieldItems : [];
@@ -2927,15 +2985,19 @@ function loadGame() {
     flags = data.flags || {};
 
     selectedClues = [];
+    activeChoices = [];
+    clearHeldInputs();
     isHiding = false;
     ghost.warning = false;
     ghost.active = false;
     ghost.escapeRoomCount = 0;
+    ghost.entryDelay = 0;
     lightState = currentRoom === "1304호 숨겨진 방" ? "out" : "on";
     gameEnded = false;
     endingType = null;
     titleActive = false;
     prologueActive = false;
+    flashbackActive = false;
     tutorialStep = 0;
     renderTutorialBanner();
 
@@ -2953,7 +3015,7 @@ function loadGame() {
 }
 
 function resetGame(withPrologue = false) {
-  injectEnhancedStylesAndDOM();
+  ensureDynamicDOM();
   currentRoom = "1층 복도";
   player = {
     x: 4,
@@ -2979,14 +3041,18 @@ function resetGame(withPrologue = false) {
   examinedProps = [];
   inventory = { sedative: 1 };
   flags = {};
+  activeChoices = [];
+  clearHeldInputs();
   isHiding = false;
   currentHidingLabel = "";
   updateClockDisplay();
   ghost.warning = false;
   ghost.active = false;
   ghost.escapeRoomCount = 0;
+  ghost.entryDelay = 0;
   gameEnded = false;
   endingType = null;
+  flashbackActive = false;
   tutorialStep = 0;
   renderTutorialBanner();
 
@@ -2995,10 +3061,11 @@ function resetGame(withPrologue = false) {
   renderInventoryUI();
   renderClueUI();
   updateHUD();
+  autoSaveGame();
   addLog("1998년 10월 13일 23:47, 은하아파트 수사를 시작했다.");
   say(
     "강현우",
-    "여기가 은하아파트 1층 복도인가... 공기가 유난히 차갑고 눅눅해. 제한 시간은 없으니 주변 단서부터 차분히 조사해 보자.",
+    "여기가 은하아파트 1층 복도인가... 공기가 유난히 차갑고 눅눅해. 주변 단서와 주민들부터 차분히 조사해 보자.",
     "c-hero"
   );
 
@@ -3008,7 +3075,7 @@ function resetGame(withPrologue = false) {
 }
 
 /* -------------------------------------------------------------------------
-   15. 쯔꾸르(RPG Maker) 16비트 픽셀 아트 렌더링 엔진
+   15. 16비트 픽셀 아트 렌더링 엔진
    ------------------------------------------------------------------------- */
 function drawDetailedFurniture(f) {
   const x = f.x * TILE;
@@ -3234,7 +3301,7 @@ function drawPixelNPC(npc) {
 function drawPixelGhost(px, py) {
   const floatY = Math.sin(animTick * 0.2) * 3;
   ctx.save();
-  ctx.globalAlpha = 0.94;
+  ctx.globalAlpha = ghost.entryDelay > 0 ? 0.55 : 0.94;
 
   ctx.fillStyle = "rgba(240, 155, 168, 0.28)";
   ctx.beginPath();
@@ -3254,7 +3321,7 @@ function drawPixelGhost(px, py) {
 }
 
 function drawInteractionReticle(hit) {
-  if (!hit || gameEnded || titleActive || prologueActive || isHiding) return;
+  if (!hit || gameEnded || titleActive || prologueActive || flashbackActive || isHiding) return;
   const x = hit.x * TILE;
   const y = hit.y * TILE;
   const pulse = Math.sin(animTick * 0.18) * 1.5;
@@ -3322,7 +3389,7 @@ function renderRoomLightingOverlay(screenPx, screenPy) {
     lctx.fillRect(0, 0, lightCanvas.width, lightCanvas.height);
 
     lctx.globalCompositeOperation = "destination-out";
-    const visRadius = isHiding ? 52 : 76;
+    const visRadius = isHiding ? 52 : (sanity < 50 ? 62 : 76);
     const ambGrad = lctx.createRadialGradient(screenPx, screenPy, 14, screenPx, screenPy, visRadius);
     ambGrad.addColorStop(0, "rgba(0,0,0,1)");
     ambGrad.addColorStop(1, "rgba(0,0,0,0)");
@@ -3365,13 +3432,13 @@ function renderMinimap() {
   ctx.save();
   ctx.fillStyle = "rgba(8, 10, 18, 0.82)";
   ctx.fillRect(bx, by, boxW, boxH);
-  ctx.strokeStyle = "#756e85";
+  ctx.strokeStyle = lightState === "out" ? "#F09BA8" : "#756e85";
   ctx.lineWidth = 1.2;
   ctx.strokeRect(bx, by, boxW, boxH);
 
   ctx.font = "bold 9px sans-serif";
-  ctx.fillStyle = "#F2D28B";
-  ctx.fillText("MAP [M]", bx + pad, by + 10);
+  ctx.fillStyle = lightState === "out" ? "#F09BA8" : "#F2D28B";
+  ctx.fillText(lightState === "out" ? "BLACKOUT" : "MAP [M]", bx + pad, by + 10);
 
   const ox = bx + pad;
   const oy = by + 14;
@@ -3398,23 +3465,21 @@ function renderMinimap() {
     ctx.fillRect(ox + d.x * scale, oy + d.y * scale, scale, scale);
   });
 
-  CLUES.filter(c => c.room === currentRoom && !collected.includes(c.id)).forEach(c => {
-    ctx.fillStyle = "#ffe680";
-    ctx.fillRect(ox + c.x * scale, oy + c.y * scale, scale, scale);
-  });
+  // 정전 중에는 단서·추격자 점 비표시 (어둠의 긴장감 유지)
+  if (lightState !== "out") {
+    CLUES.filter(c => c.room === currentRoom && !collected.includes(c.id)).forEach(c => {
+      ctx.fillStyle = "#ffe680";
+      ctx.fillRect(ox + c.x * scale, oy + c.y * scale, scale, scale);
+    });
 
-  NPCS.filter(n => n.room === currentRoom).forEach(n => {
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(ox + n.x * scale, oy + n.y * scale, scale, scale);
-  });
+    NPCS.filter(n => n.room === currentRoom).forEach(n => {
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillRect(ox + n.x * scale, oy + n.y * scale, scale, scale);
+    });
+  }
 
   ctx.fillStyle = "#8FC9FF";
   ctx.fillRect(ox + (player.px / TILE) * scale, oy + (player.py / TILE) * scale, scale + 1, scale + 1);
-
-  if (ghost.active && ghost.room === currentRoom) {
-    ctx.fillStyle = "#F09BA8";
-    ctx.fillRect(ox + (ghost.px / TILE) * scale, oy + (ghost.py / TILE) * scale, scale + 1, scale + 1);
-  }
 
   ctx.restore();
 }
@@ -3600,7 +3665,7 @@ function renderGame() {
 }
 
 /* -------------------------------------------------------------------------
-   16. 메인 게임 루프 및 키보드 입력
+   16. 메인 게임 루프 및 물리 키 코드(e.code) 기반 키보드 입력
    ------------------------------------------------------------------------- */
 let lastTime = performance.now();
 
@@ -3608,7 +3673,7 @@ function gameLoop(now) {
   const dt = Math.min(0.1, (now - lastTime) / 1000);
   lastTime = now;
 
-  if (!gameEnded && !titleActive && !prologueActive) {
+  if (!gameEnded && !titleActive && !prologueActive && !flashbackActive) {
     updatePlayerMovement(dt);
     updateCamera(dt);
 
@@ -3630,36 +3695,69 @@ function gameLoop(now) {
 }
 
 document.addEventListener("keydown", e => {
-  const k = e.key.toLowerCase();
+  const code = e.code;
 
-  // 프롤로그 진행 중 키보드 조작
+  // 1. 프롤로그 오버레이 조작
   if (prologueActive) {
-    if ([" ", "enter", "e", "escape"].includes(k)) e.preventDefault();
+    if (["Space", "Enter", "KeyE", "Escape"].includes(code)) e.preventDefault();
     if (e.repeat) return;
-    if (k === "escape") finishPrologue();
-    else if (k === " " || k === "enter" || k === "e") advancePrologue();
+    if (code === "Escape") finishPrologue();
+    else if (code === "Space" || code === "Enter" || code === "KeyE") advancePrologue();
     return;
   }
 
-  if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(k)) {
+  // 2. 기억 회상 컷신 오버레이 조작
+  if (flashbackActive) {
+    if (["Space", "Enter", "KeyE", "Escape"].includes(code)) e.preventDefault();
+    if (e.repeat) return;
+    if (code === "Space" || code === "Enter" || code === "KeyE" || code === "Escape") closeMemoryFlashback();
+    return;
+  }
+
+  // 3. 대화 선택지가 활성화된 상태에서는 이동/조사를 잠그고 숫자키(1~9)로만 선택
+  if (activeChoices.length > 0 && !titleActive) {
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(code)) {
+      e.preventDefault();
+    }
+    if (e.repeat) return;
+    if (code.startsWith("Digit")) {
+      const idx = parseInt(code.replace("Digit", ""), 10) - 1;
+      if (activeChoices[idx]) {
+        e.preventDefault();
+        const chosen = activeChoices[idx];
+        activeChoices = [];
+        const chBox = document.getElementById("choices");
+        if (chBox) chBox.innerHTML = "";
+        chosen.action();
+      }
+    }
+    return;
+  }
+
+  // 4. 일반 탐색 상태 — 물리 키 코드(e.code)로 한글 IME 상태에서도 즉시 반응
+  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(code)) {
     e.preventDefault();
   }
-  keys[k] = true;
+  keys[code] = true;
 
   if (e.repeat || titleActive) return;
-  if (k === "e" || k === " ") interact();
-  else if (k === "h") toggleHide();
-  else if (k === "m") toggleMinimap();
-  else if (k === "c") combineSelectedClues();
-  else if (k === "i") openDeductionSummary();
-  else if (k === "1") useConsumable("sedative");
+  if (code === "KeyE" || code === "Space") interact();
+  else if (code === "KeyH") toggleHide();
+  else if (code === "KeyM") toggleMinimap();
+  else if (code === "KeyC") combineSelectedClues();
+  else if (code === "KeyI") openDeductionSummary();
+  else if (code === "KeyQ") useConsumable("sedative");
 });
 
 document.addEventListener("keyup", e => {
-  keys[e.key.toLowerCase()] = false;
+  keys[e.code] = false;
 });
 
-injectEnhancedStylesAndDOM();
+window.addEventListener("blur", () => {
+  clearHeldInputs();
+});
+
+ensureDynamicDOM();
 snapCamera();
 refreshTitleScreen();
 renderInventoryUI();
