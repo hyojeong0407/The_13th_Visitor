@@ -559,7 +559,7 @@ let sanity = 100;
 let stamina = 100;
 
 // 구역 형광등 조명 상태: "on" (정상 점등) | "flicker" (점멸 전조) | "out" (정전/암전)
-const FLICKER_DURATION = 8.0;
+const FLICKER_DURATION = 12.0;
 let lightState = "on";
 let flickerTimer = 0;
 let flickerSfxCooldown = 0;
@@ -779,15 +779,8 @@ function toggleMinimap() {
 function updateClockDisplay() {
   const clockEl = document.getElementById("clock-display");
   if (!clockEl) return;
-  const totalMin = 47 + Math.min(12, Math.floor(elapsedMinutes));
-  const hh = totalMin >= 60 ? "00" : "23";
-  const mm = (totalMin % 60).toString().padStart(2, "0");
-  clockEl.textContent = `1998년 10월 13일 ${hh}:${mm}`;
-  if (totalMin >= 56) {
-    clockEl.classList.add("meta-danger");
-  } else {
-    clockEl.classList.remove("meta-danger");
-  }
+  clockEl.textContent = "1998년 10월 13일 23:47";
+  clockEl.classList.remove("meta-danger");
 }
 
 function openEndingGallery() {
@@ -973,7 +966,7 @@ function renderInventoryUI() {
     <div class="bag-row">
       <div class="bag-info">
         <span class="bag-name">은신 요령 메모</span>
-        <span class="bag-desc">형광등이 깜빡이면(8초) 즉시 주변 은신처에서 [H] 키로 숨으세요.</span>
+        <span class="bag-desc">형광등이 깜빡이면(12초) 즉시 주변 은신처에서 [H] 키로 숨으세요.</span>
       </div>
     </div>
   `;
@@ -1782,7 +1775,7 @@ function startGhostWarning(roomName, gx, gy, warningText, chaseText) {
 function updateLightingAndGhost(dt) {
   if (gameEnded || titleActive) return;
 
-  // 1. 형광등 점멸 전조 카운트다운 (8초)
+  // 1. 형광등 점멸 전조 카운트다운 (12초)
   if (lightState === "flicker" && ghost.warning) {
     flickerTimer -= dt;
     flickerSfxCooldown -= dt;
@@ -2750,7 +2743,6 @@ function gameLoop(now) {
       }
     }
 
-    elapsedMinutes = Math.min(12, elapsedMinutes + dt * 0.045);
     updateClockDisplay();
     updateLightingAndGhost(dt);
     updateHUD();
