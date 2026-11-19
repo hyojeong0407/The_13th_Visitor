@@ -1,9 +1,21 @@
 /* =========================================================================
-   4. 원혼 AI(BFS 길찾기) · 은신 발각 및 숨 참기 미니게임 · 정신력 환각 모듈
+   4. 원혼 AI(정수 인덱스 BFS) · 은신 발각 및 숨 참기 미니게임 · 정신력 환각 모듈 (v1.4.2)
    ========================================================================= */
 import { ROOMS } from "./data.js";
-import { state, TILE, FLICKER_DURATION, GAME_MODE, GHOST_STATE, setGhostState, autoSaveGame } from "./state.js";
+import {
+  TILE, FLICKER_DURATION, GHOST_CONFIG, BREATH_CONFIG, SANITY_CONFIG
+} from "./config.js";
+import {
+  state, GAME_MODE, GHOST_STATE, setGhostState, autoSaveGame, markHudDirty
+} from "./state.js";
 import { playSfx } from "./audio.js";
+
+const CARDINAL_DIRS = [
+  [0, 1],
+  [0, -1],
+  [-1, 0],
+  [1, 0]
+];
 
 export function isBlocked(roomName, tx, ty, npcs = []) {
   const r = ROOMS[roomName];
@@ -22,23 +34,40 @@ export function isBlocked(roomName, tx, ty, npcs = []) {
 export function findNearestWalkable(roomName, sx, sy, npcs = []) {
   const r = ROOMS[roomName];
   if (!r) return { x: 4, y: 4 };
-  if (!isBlocked(roomName, sx, sy, npcs)) return { x: sx, y: sy };
+  const clampedX = Math.max(1, Math.min(r.cols - 2, sx));
+  const clampedY = Math.max(1, Math.min(r.rows - 2, sy));
+  if (!isBlocked(roomName, clampedX, clampedY, npcs)) return { x: clampedX, y: clampedY };
 
-  const visited = new Set([`${sx},${sy}`]);
-  const queue = [{ x: sx, y: sy }];
+  const cols = r.cols;
+  const total = cols * r.rows;
+  const visited = new Uint8Array(total);
+  const queueX = new Int16Array(total);
+  const queueY = new Int16Array(total);
+  let head = 0;
+  let tail = 0;
 
-  while (queue.length > 0) {
-    const cur = queue.shift();
-    for (const [dx, dy] of [[0, 1], [0, -1], [-1, 0], [1, 0]]) {
-      const nx = cur.x + dx;
-      const ny = cur.y + dy;
-      const key = `${nx},${ny}`;
-      if (visited.has(key)) continue;
-      visited.add(key);
-      if (nx >= 1 && nx <= r.cols - 2 && ny >= 1 && ny <= r.rows - 2) {
-        if (!isBlocked(roomName, nx, ny, npcs)) return { x: nx, y: ny };
-        queue.push({ x: nx, y: ny });
-      }
+  visited[clampedY * cols + clampedX] = 1;
+  queueX[tail] = clampedX;
+  queueY[tail] = clampedY;
+  tail++;
+
+  while (head < tail) {
+    const cx = queueX[head];
+    const cy = queueY[head];
+    head++;
+
+    for (let i = 0; i < 4; i++) {
+      const nx = cx + CARDINAL_DIRS[i][0];
+      const ny = cy + CARDINAL_DIRS[i][1];
+      if (nx < 1 || nx > r.cols - 2 || ny < 1 || ny > r.rows - 2) continue;
+      const idx = ny * cols + nx;
+      if (visited[idx]) continue;
+      visited[idx] = 1;
+
+      if (!isBlocked(roomName, nx, ny, npcs)) return { x: nx, y: ny };
+      queueX[tail] = nx;
+      queueY[tail] = ny;
+      tail++;
     }
   }
   return { x: 3, y: 4 };
@@ -48,31 +77,66 @@ export function getNextBfsStep(roomName, startX, startY, goalX, goalY, npcs = []
   const r = ROOMS[roomName];
   if (!r || (startX === goalX && startY === goalY)) return { x: goalX, y: goalY };
 
-  const visited = new Set([`${startX},${startY}`]);
-  const queue = [{ x: startX, y: startY, firstStep: null }];
+  const cols = r.cols;
+  const rows = r.rows;
+  const total = cols * rows;
+  const visited = new Uint8Array(total);
+  const queueIdx = new Int16Array(total);
+  const firstStepIdx = new Int16Array(total);
+  let head = 0;
+  let tail = 0;
 
-  while (queue.length > 0) {
-    const cur = queue.shift();
-    for (const [dx, dy] of [[0, 1], [0, -1], [-1, 0], [1, 0]]) {
-      const nx = cur.x + dx;
-      const ny = cur.y + dy;
-      const key = `${nx},${ny}`;
-      if (visited.has(key)) continue;
-      visited.add(key);
+  const startIdx = startY * cols + startX;
+  const goalIdx = goalY * cols + goalX;
+  visited[startIdx] = 1;
+  queueIdx[tail] = startIdx;
+  firstStepIdx[tail] = -1;
+  tail++;
 
-      if (nx === goalX && ny === goalY) {
-        return cur.firstStep || { x: nx, y: ny };
+  while (head < tail) {
+    const curIdx = queueIdx[head];
+    const curFirst = firstStepIdx[head];
+    head++;
+
+    const cx = curIdx % cols;
+    const cy = (curIdx - cx) / cols;
+
+    for (let i = 0; i < 4; i++) {
+      const nx = cx + CARDINAL_DIRS[i][0];
+      const ny = cy + CARDINAL_DIRS[i][1];
+      if (nx < 1 || nx > cols - 2 || ny < 1 || ny > rows - 2) continue;
+
+      const nIdx = ny * cols + nx;
+      if (visited[nIdx]) continue;
+      visited[nIdx] = 1;
+
+      const stepIdx = curFirst === -1 ? nIdx : curFirst;
+      if (nIdx === goalIdx) {
+        return { x: stepIdx % cols, y: Math.floor(stepIdx / cols) };
       }
+
       if (!isBlocked(roomName, nx, ny, npcs)) {
-        queue.push({
-          x: nx,
-          y: ny,
-          firstStep: cur.firstStep || { x: nx, y: ny }
-        });
+        queueIdx[tail] = nIdx;
+        firstStepIdx[tail] = stepIdx;
+        tail++;
       }
     }
   }
-  return { x: goalX, y: goalY };
+  return { x: startX, y: startY };
+}
+
+export function beginBreathHoldMinigame(hidingId) {
+  const repeatCount = state.hidingUseCount[hidingId] || 1;
+  state.breathHold.active = true;
+  state.breathHold.gauge = Math.max(
+    BREATH_CONFIG.MIN_INITIAL_GAUGE,
+    BREATH_CONFIG.BASE_GAUGE - (repeatCount - 1) * BREATH_CONFIG.REPEAT_GAUGE_PENALTY
+  );
+  state.breathHold.timer = 0;
+  state.breathHold.duration = Math.min(
+    BREATH_CONFIG.MAX_DURATION,
+    BREATH_CONFIG.BASE_DURATION + (repeatCount - 1) * BREATH_CONFIG.REPEAT_DURATION_BONUS
+  );
 }
 
 export function startGhostWarning(roomName, gx, gy, warningText, chaseText, callbacks) {
@@ -88,7 +152,10 @@ export function startGhostWarning(roomName, gx, gy, warningText, chaseText, call
   state.ghost.spawnY = gy;
   state.ghost.chaseText = chaseText;
   state.ghost.escapeRoomCount = 0;
+  state.ghost.escapePathRooms = [roomName];
   state.ghost.entryDelay = 0;
+  state.ghost.lastBfsTileKey = -1;
+  state.ghost.cachedBfsStep = null;
 
   if (!state.flags.tutorialStep4Shown && !state.flags.tutorialDone && callbacks.onTutorial4) {
     state.flags.tutorialStep4Shown = true;
@@ -98,18 +165,18 @@ export function startGhostWarning(roomName, gx, gy, warningText, chaseText, call
   playSfx("flicker");
   callbacks.addLog(warningText);
   callbacks.say("SYSTEM", warningText, "c-system");
-  callbacks.updateHUD();
+  markHudDirty();
 }
 
 export function holdBreathAction() {
   if (!state.isHiding || !state.breathHold.active) return false;
-  state.breathHold.gauge = Math.min(100, state.breathHold.gauge + 22);
+  state.breathHold.gauge = Math.min(100, state.breathHold.gauge + BREATH_CONFIG.PRESS_GAIN);
   playSfx("breath");
   return true;
 }
 
 export function updateHallucinations(dt, callbacks) {
-  if (state.sanity > 40) {
+  if (state.sanity > SANITY_CONFIG.HALLUCINATION_THRESHOLD) {
     state.hallucination.fakeClue = null;
     state.hallucination.timer = 0;
     return;
@@ -138,7 +205,6 @@ export function updateHallucinations(dt, callbacks) {
 }
 
 export function updateLightingAndGhost(dt, npcs, callbacks) {
-  // 1. 형광등 점멸 전조 카운트다운 (10초)
   if (state.lightState === "flicker" && state.ghost.state === GHOST_STATE.WARNING) {
     state.flickerTimer -= dt;
     state.flickerSfxCooldown -= dt;
@@ -156,16 +222,14 @@ export function updateLightingAndGhost(dt, npcs, callbacks) {
       state.ghost.py = safeSpawn.y * TILE;
       state.ghost.patrolTimer = 0;
       state.ghost.entryDelay = 0;
+      state.ghost.lastBfsTileKey = -1;
+      state.ghost.cachedBfsStep = null;
       state.lightState = "out";
       playSfx("ghost");
 
       if (state.isHiding) {
         setGhostState(GHOST_STATE.SEARCH);
-        const repeatCount = state.hidingUseCount[state.currentHidingId] || 1;
-        state.breathHold.active = true;
-        state.breathHold.gauge = Math.max(38, 72 - (repeatCount - 1) * 14);
-        state.breathHold.timer = 0;
-        state.breathHold.duration = Math.min(5.0, 3.0 + (repeatCount - 1) * 0.6);
+        beginBreathHoldMinigame(state.currentHidingId);
 
         callbacks.addLog("형광등이 꺼졌다! 추격자가 은신처 주변을 수색한다 — [Space]로 숨을 참아라!");
         callbacks.say("SYSTEM", "조명이 꺼지고 13번째 방문자가 코앞까지 다가왔다! [[blue:[Space]]] 키를 연타해 숨을 참아라!", "c-ghost");
@@ -173,12 +237,11 @@ export function updateLightingAndGhost(dt, npcs, callbacks) {
         callbacks.addLog(state.ghost.chaseText);
         callbacks.say("13번째 방문자", state.ghost.chaseText, "c-ghost");
       }
-      callbacks.updateHUD();
+      markHudDirty();
     }
     return;
   }
 
-  // 2. 원혼 추격 / 수색 상태 처리
   if ((state.ghost.state !== GHOST_STATE.CHASE && state.ghost.state !== GHOST_STATE.SEARCH) || state.ghost.room !== state.currentRoom) {
     return;
   }
@@ -194,16 +257,15 @@ export function updateLightingAndGhost(dt, npcs, callbacks) {
     return;
   }
 
-  // 은신 중 수색(SEARCH) 및 숨 참기 미니게임
   if (state.isHiding) {
     setGhostState(GHOST_STATE.SEARCH);
     state.ghost.patrolTimer += dt;
-    state.ghost.px += Math.sin(state.animTick * 0.08) * 34 * dt;
-    state.ghost.py += Math.cos(state.animTick * 0.06) * 24 * dt;
+    state.ghost.px += Math.sin(state.elapsedTime * 4.8) * 34 * dt;
+    state.ghost.py += Math.cos(state.elapsedTime * 3.6) * 24 * dt;
 
     if (state.breathHold.active) {
       const repeatCount = state.hidingUseCount[state.currentHidingId] || 1;
-      const drainRate = 24 + (repeatCount - 1) * 7;
+      const drainRate = BREATH_CONFIG.BASE_DRAIN_RATE + (repeatCount - 1) * BREATH_CONFIG.REPEAT_DRAIN_PENALTY;
       state.breathHold.gauge = Math.max(0, state.breathHold.gauge - drainRate * dt);
       state.breathHold.timer += dt;
 
@@ -216,7 +278,7 @@ export function updateLightingAndGhost(dt, npcs, callbacks) {
         playSfx("ghost");
         callbacks.addLog("거친 숨소리를 들켜 은신처 문이 강제로 열렸다!");
         callbacks.say("13번째 방문자", "......찾았다! 숨소리가 새어 나와 은신처가 발각되었다! 당장 도망쳐라!", "c-ghost");
-        callbacks.updateHUD();
+        markHudDirty();
         return;
       }
 
@@ -226,25 +288,30 @@ export function updateLightingAndGhost(dt, npcs, callbacks) {
       }
     }
 
-    if (state.ghost.patrolTimer >= 5.5 && !state.breathHold.active) {
+    if (state.ghost.patrolTimer >= GHOST_CONFIG.SEARCH_PATROL_DURATION && !state.breathHold.active) {
       setGhostState(GHOST_STATE.IDLE);
       state.lightState = "on";
       playSfx("light_on");
-      callbacks.changeSanity(4, "은신 및 숨 참기 성공으로 위기 극복");
+      callbacks.changeSanity(SANITY_CONFIG.HIDE_SUCCESS_REWARD, "은신 및 숨 참기 성공으로 위기 극복");
       callbacks.addLog("13번째 방문자가 어둠 속으로 물러나고, 천장 형광등이 다시 켜졌다.");
       callbacks.say("SYSTEM", "발소리가 멀어지고 지지직거리는 소리와 함께 형광등이 다시 켜졌다!", "c-system");
-      callbacks.updateHUD();
+      markHudDirty();
       autoSaveGame();
     }
     return;
   }
 
-  // CHASE 상태: BFS 길찾기 추격
   setGhostState(GHOST_STATE.CHASE);
   const r = ROOMS[state.currentRoom];
   const gxTile = Math.max(1, Math.min(r.cols - 2, Math.round(state.ghost.px / TILE)));
   const gyTile = Math.max(1, Math.min(r.rows - 2, Math.round(state.ghost.py / TILE)));
-  const nextStep = getNextBfsStep(state.currentRoom, gxTile, gyTile, state.player.x, state.player.y, npcs);
+
+  const tileKey = ((gyTile * r.cols + gxTile) << 16) | (state.player.y * r.cols + state.player.x);
+  if (state.ghost.lastBfsTileKey !== tileKey || !state.ghost.cachedBfsStep) {
+    state.ghost.lastBfsTileKey = tileKey;
+    state.ghost.cachedBfsStep = getNextBfsStep(state.currentRoom, gxTile, gyTile, state.player.x, state.player.y, npcs);
+  }
+  const nextStep = state.ghost.cachedBfsStep;
 
   const targetX = (nextStep.x === state.player.x && nextStep.y === state.player.y) ? state.player.px : nextStep.x * TILE;
   const targetY = (nextStep.x === state.player.x && nextStep.y === state.player.y) ? state.player.py : nextStep.y * TILE;
@@ -254,23 +321,20 @@ export function updateLightingAndGhost(dt, npcs, callbacks) {
   const distToStep = Math.hypot(dx, dy);
   const directDist = Math.hypot(state.player.px - state.ghost.px, state.player.py - state.ghost.py);
 
-  const speedPx = (state.ghost.speed + (state.sanity < 40 ? 0.35 : 0)) * TILE;
+  const speedTiles = state.ghost.speed + (state.sanity < SANITY_CONFIG.HALLUCINATION_THRESHOLD ? GHOST_CONFIG.LOW_SANITY_BONUS_TILES : 0);
+  const speedPx = speedTiles * TILE;
 
   if (distToStep > 1) {
     state.ghost.px += (dx / distToStep) * speedPx * dt;
     state.ghost.py += (dy / distToStep) * speedPx * dt;
   }
 
-  if (directDist < TILE * 3.0) {
-    state.sanity = Math.max(0, state.sanity - 5.0 * dt);
-    callbacks.updateHUD();
-    if (state.sanity <= 0) {
-      callbacks.triggerGameOver("정신 붕괴", "13번째 방문자의 광기에 정신을 잠식당한 강현우는 그 자리에서 무너지고 말았다.");
-      return;
-    }
+  if (directDist < TILE * GHOST_CONFIG.PROXIMITY_SANITY_DIST_TILES) {
+    callbacks.changeSanity(-GHOST_CONFIG.PROXIMITY_SANITY_DRAIN * dt, "", true);
+    if (state.mode === GAME_MODE.ENDED) return;
   }
 
-  if (directDist < TILE * 0.55) {
+  if (directDist < TILE * GHOST_CONFIG.CATCH_DIST_TILES) {
     callbacks.triggerGameOver("13층의 제물", "제때 숨거나 따돌리지 못한 강현우는 13번째 방문자의 손아귀에 붙잡혀 13층의 어둠 속으로 끌려갔다.");
   }
 }

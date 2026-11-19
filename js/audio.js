@@ -1,6 +1,7 @@
 /* =========================================================================
-   2. 레트로 Web Audio 사운드 & 오컬트 앰비언트 BGM 모듈
+   2. 레트로 Web Audio 사운드 & 오컬트 앰비언트 BGM 모듈 (v1.4.2)
    ========================================================================= */
+import { ROOMS } from "./data.js";
 import { state, GAME_MODE, GHOST_STATE } from "./state.js";
 
 let soundEnabled = true;
@@ -29,11 +30,12 @@ function startAmbientBgm() {
     if (!soundEnabled || !audioCtx || audioCtx.state !== "running") return;
     if (state.mode === GAME_MODE.TITLE || state.mode === GAME_MODE.ENDED) return;
     try {
-      const is13F = state.currentRoom.includes("13");
+      const roomInfo = ROOMS[state.currentRoom];
+      const isCursed = roomInfo?.theme === "cursed";
       const tense = state.ghost.state === GHOST_STATE.CHASE || state.ghost.state === GHOST_STATE.WARNING;
       const notes = tense
         ? [110, 116.54, 103.83, 123.47]
-        : (is13F ? [73.42, 77.78, 69.30, 82.41] : [65.41, 73.42, 61.74, 65.41]);
+        : (isCursed ? [73.42, 77.78, 69.30, 82.41] : [65.41, 73.42, 61.74, 65.41]);
       const freq = notes[bgmStep % notes.length];
       bgmStep++;
 

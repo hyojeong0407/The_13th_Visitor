@@ -346,13 +346,16 @@ export const PROPS = [
 export const ROOMS = {
   "1층 복도": {
     cols: 20, rows: 9,
+    theme: "normal",
     bg: "#1b1d29", floorA: "#272a38", floorB: "#222532", wall: "#4d4a5c",
     furniture: [
       { x: 2, y: 2, w: 3, h: 1, color: "#574b42", label: "우편함", style: "mailbox" },
       { x: 7, y: 2, w: 2, h: 1, color: "#444c5e", label: "현관 게시판", style: "board" },
       { x: 14, y: 6, w: 3, h: 1, color: "#3d4454", label: "안내판", style: "board" }
     ],
-    hidingSpots: [],
+    hidingSpots: [
+      { id: "hide_1f", x: 11, y: 2, label: "계단실 청소함" }
+    ],
     doors: [
       { x: 1, y: 4, to: "경비실", tx: 13, ty: 4, label: "경비실" },
       { x: 10, y: 7, to: "지하 주차장", tx: 10, ty: 2, label: "지하 주차장" },
@@ -361,6 +364,7 @@ export const ROOMS = {
   },
   "경비실": {
     cols: 16, rows: 9,
+    theme: "normal",
     bg: "#1d1a24", floorA: "#2d2836", floorB: "#27232f", wall: "#594e63",
     furniture: [
       { x: 2, y: 2, w: 3, h: 2, color: "#5c493e", label: "경비 책상", style: "desk" },
@@ -375,6 +379,7 @@ export const ROOMS = {
   },
   "지하 주차장": {
     cols: 22, rows: 11,
+    theme: "basement",
     bg: "#13161c", floorA: "#1e222b", floorB: "#1a1e26", wall: "#3c424f",
     furniture: [
       { x: 2, y: 5, w: 3, h: 2, color: "#3b4c5e", label: "순찰 차량", style: "car" },
@@ -382,7 +387,8 @@ export const ROOMS = {
       { x: 15, y: 6, w: 3, h: 2, color: "#4a3b3b", label: "방치 폐차", style: "car" }
     ],
     hidingSpots: [
-      { id: "hide_b1", x: 6, y: 3, label: "콘크리트 기둥" }
+      { id: "hide_b1", x: 6, y: 3, label: "콘크리트 기둥" },
+      { id: "hide_b1_east", x: 19, y: 3, label: "기계실 격벽" }
     ],
     doors: [
       { x: 10, y: 1, to: "1층 복도", tx: 10, ty: 6, label: "1층 계단" }
@@ -390,6 +396,7 @@ export const ROOMS = {
   },
   "엘리베이터": {
     cols: 12, rows: 9,
+    theme: "elevator",
     bg: "#17161f", floorA: "#2b2936", floorB: "#25232e", wall: "#5e586b",
     furniture: [
       { x: 9, y: 3, w: 1, h: 2, color: "#6b2d38", label: "층수 버튼", style: "panel" }
@@ -401,6 +408,7 @@ export const ROOMS = {
   },
   "13층 복도": {
     cols: 26, rows: 9,
+    theme: "cursed",
     bg: "#161118", floorA: "#241c26", floorB: "#1f1821", wall: "#543944",
     furniture: [
       { x: 4, y: 2, w: 2, h: 1, color: "#4a3338", label: "녹슨 소화전", style: "hydrant" },
@@ -408,7 +416,8 @@ export const ROOMS = {
       { x: 21, y: 6, w: 3, h: 1, color: "#3b2c33", label: "폐가구", style: "desk" }
     ],
     hidingSpots: [
-      { id: "hide_13f", x: 7, y: 6, label: "배전함 캐비닛" }
+      { id: "hide_13f", x: 7, y: 6, label: "배전함 캐비닛" },
+      { id: "hide_13f_east", x: 20, y: 3, label: "비상계단 틈새" }
     ],
     doors: [
       { x: 1, y: 4, to: "엘리베이터", tx: 3, ty: 4, label: "엘리베이터" },
@@ -417,6 +426,7 @@ export const ROOMS = {
   },
   "1304호 거실": {
     cols: 18, rows: 10,
+    theme: "cursed",
     bg: "#21222e", floorA: "#2e2f3d", floorB: "#282936", wall: "#545163",
     furniture: [
       { x: 5, y: 2, w: 3, h: 1, color: "#635144", label: "낡은 소파", style: "sofa" },
@@ -433,24 +443,30 @@ export const ROOMS = {
   },
   "1304호 안방": {
     cols: 16, rows: 9,
+    theme: "cursed",
     bg: "#241d26", floorA: "#302733", floorB: "#29212b", wall: "#634d5c",
     furniture: [
       { x: 5, y: 2, w: 4, h: 2, color: "#6e4c56", label: "낡은 침대", style: "bed" },
       { x: 10, y: 2, w: 2, h: 1, color: "#4a3848", label: "화장대", style: "desk" }
     ],
-    hidingSpots: [],
+    hidingSpots: [
+      { id: "hide_master", x: 13, y: 6, label: "안방 붙박이장" }
+    ],
     doors: [
       { x: 1, y: 4, to: "1304호 거실", tx: 15, ty: 4, label: "거실" }
     ]
   },
   "1304호 아이 방": {
     cols: 16, rows: 9,
+    theme: "cursed",
     bg: "#1f2533", floorA: "#2a3242", floorB: "#242b38", wall: "#4f5e75",
     furniture: [
       { x: 3, y: 2, w: 3, h: 2, color: "#465a6e", label: "어린이 침대", style: "bed" },
       { x: 10, y: 5, w: 2, h: 1, color: "#475066", label: "책상", style: "desk" }
     ],
-    hidingSpots: [],
+    hidingSpots: [
+      { id: "hide_child", x: 12, y: 2, label: "아이 방 책장 뒤" }
+    ],
     doors: [
       { x: 8, y: 7, to: "1304호 거실", tx: 9, ty: 2, label: "거실" },
       { x: 14, y: 4, to: "1304호 숨겨진 방", tx: 2, ty: 4, label: "숨겨진 방", secret: true }
@@ -458,6 +474,7 @@ export const ROOMS = {
   },
   "1304호 숨겨진 방": {
     cols: 16, rows: 9,
+    theme: "cursed",
     bg: "#141019", floorA: "#211a26", floorB: "#1b1520", wall: "#663f4b",
     furniture: [
       { x: 3, y: 2, w: 3, h: 1, color: "#453139", label: "기록 보관함", style: "desk" },

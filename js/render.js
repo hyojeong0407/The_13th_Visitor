@@ -1,11 +1,40 @@
 /* =========================================================================
-   5. 16비트 픽셀 렌더링 엔진 (인접 돋보기, 축소 조명, 숨 참기 게이지, 정신력 환각)
+   5. 16비트 픽셀 렌더링 엔진 (시간 기반 애니메이션 · 광과민/감소 모션 대응) (v1.4.2)
    ========================================================================= */
 import { ROOMS, NPCS, PROPS, FIELD_ITEMS } from "./data.js";
-import { state, TILE, GAME_MODE, GHOST_STATE } from "./state.js";
+import { TILE, FLICKER_DURATION, SANITY_CONFIG } from "./config.js";
+import { state, GAME_MODE, GHOST_STATE } from "./state.js";
 
 const lightCanvas = document.createElement("canvas");
 const lctx = lightCanvas.getContext("2d");
+
+export function updateVisualTimers(dt) {
+  state.elapsedTime += dt;
+
+  if (state.screenShake > 0) {
+    if (state.prefs.reducedMotion) {
+      state.screenShake = 0;
+    } else {
+      state.screenShake *= Math.pow(0.0005, dt);
+      if (state.screenShake < 0.25) state.screenShake = 0;
+    }
+  }
+
+  if (state.lightState === "on") {
+    state.currentLightOn = true;
+  } else if (state.lightState === "out") {
+    state.currentLightOn = false;
+  } else if (state.lightState === "flicker") {
+    if (state.prefs.reducedMotion) {
+      state.currentLightOn = true;
+    } else {
+      const progress = 1 - Math.max(0, state.flickerTimer / FLICKER_DURATION);
+      const t = state.elapsedTime * 60;
+      const wave = Math.sin(t * 0.55) + Math.cos(t * 1.25);
+      state.currentLightOn = wave > (-0.45 + progress * 0.95);
+    }
+  }
+}
 
 function drawDetailedFurniture(ctx, f) {
   const x = f.x * TILE;
@@ -37,7 +66,7 @@ function drawDetailedFurniture(ctx, f) {
     ctx.fillStyle = "rgba(0,0,0,0.22)";
     ctx.fillRect(x + 28, y + 4, 3, h - 8);
   } else if (f.style === "cctv") {
-    ctx.fillStyle = (Math.floor(state.animTick / 15) % 2 === 0) ? "#4f8c7a" : "#386659";
+    ctx.fillStyle = (Math.floor(state.elapsedTime * 4) % 2 === 0) ? "#4f8c7a" : "#386659";
     ctx.fillRect(x + 8, y + 6, 22, 16);
     ctx.fillRect(x + 36, y + 6, 22, 16);
   } else if (f.style === "mirror") {
@@ -163,7 +192,7 @@ function drawPixelHero(ctx, px, py, dir, moving, walkTimer, stepParity) {
 function drawPixelNPC(ctx, npc) {
   const px = npc.x * TILE;
   const py = npc.y * TILE;
-  const idleBob = Math.floor(state.animTick / 28) % 2;
+  const idleBob = state.prefs.reducedMotion ? 0 : (Math.floor(state.elapsedTime * 2.1) % 2);
 
   ctx.fillStyle = "rgba(0,0,0,0.45)";
   ctx.fillRect(px + 9, py + 33, 22, 5);
@@ -200,7 +229,7 @@ function drawPixelNPC(ctx, npc) {
     ctx.fillRect(px + 15, py + 10 + idleBob, 2, 2);
     ctx.fillRect(px + 23, py + 10 + idleBob, 2, 2);
   } else if (npc.id === "yoonseo") {
-    const flicker = 0.75 + Math.sin(state.animTick * 0.15) * 0.2;
+    const flicker = state.prefs.reducedMotion ? 0.85 : (0.75 + Math.sin(state.elapsedTime * 9.0) * 0.2);
     ctx.save();
     ctx.globalAlpha = flicker;
     ctx.fillStyle = "#e6ecf5";
@@ -225,7 +254,7 @@ function drawPixelNPC(ctx, npc) {
 }
 
 function drawPixelGhost(ctx, px, py) {
-  const floatY = Math.sin(state.animTick * 0.2) * 3;
+  const floatY = state.prefs.reducedMotion ? 0 : Math.sin(state.elapsedTime * 12.0) * 3;
   ctx.save();
   ctx.globalAlpha = state.ghost.entryDelay > 0 ? 0.55 : 0.94;
 
@@ -246,15 +275,13 @@ function drawPixelGhost(ctx, px, py) {
   ctx.restore();
 }
 
-/* [!] 표식 대신 인접 시에만 돋보기 아이콘 + 레티클을 표시 */
 function drawMagnifierIndicator(ctx, hit) {
   if (!hit || state.mode !== GAME_MODE.PLAY || state.isHiding) return;
   const x = hit.x * TILE;
   const y = hit.y * TILE;
-  const bob = Math.sin(state.animTick * 0.16) * 2;
+  const bob = state.prefs.reducedMotion ? 0 : Math.sin(state.elapsedTime * 9.5) * 2;
 
   ctx.save();
-  // 1. 타일 코너 레티클
   ctx.strokeStyle = hit.type === "clue" || hit.type === "mirror" ? "#F2D28B" : "#8FC9FF";
   ctx.lineWidth = 1.6;
   const pad = 4;
@@ -267,7 +294,6 @@ function drawMagnifierIndicator(ctx, hit) {
   ctx.moveTo(x + TILE - pad - len, y + TILE - pad); ctx.lineTo(x + TILE - pad, y + TILE - pad); ctx.lineTo(x + TILE - pad, y + TILE - pad - len);
   ctx.stroke();
 
-  // 2. 인접 조사 가능 돋보기 아이콘 배지
   const cx = x + TILE / 2;
   const cy = y - 10 + bob;
   ctx.fillStyle = "rgba(10, 13, 24, 0.9)";
@@ -278,7 +304,6 @@ function drawMagnifierIndicator(ctx, hit) {
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // 돋보기 렌즈 & 손잡이
   ctx.strokeStyle = "#FFFFFF";
   ctx.lineWidth = 1.7;
   ctx.beginPath();
@@ -290,37 +315,29 @@ function drawMagnifierIndicator(ctx, hit) {
   ctx.restore();
 }
 
-/* 평상시 조명 반경 축소(5칸) + 정신력에 따른 시야 협소화 */
 function renderRoomLightingOverlay(ctx, canvas, screenPx, screenPy) {
   if (lightCanvas.width !== canvas.width || lightCanvas.height !== canvas.height) {
     lightCanvas.width = canvas.width;
     lightCanvas.height = canvas.height;
   }
 
-  if (state.lightState === "on") {
-    state.currentLightOn = true;
-  } else if (state.lightState === "out") {
-    state.currentLightOn = false;
-  } else if (state.lightState === "flicker") {
-    const progress = 1 - Math.max(0, state.flickerTimer / 10.0);
-    const wave = Math.sin(state.animTick * 0.85) + Math.cos(state.animTick * 1.93);
-    state.currentLightOn = wave > (-0.45 + progress * 0.95);
-  }
-
   lctx.save();
   lctx.globalCompositeOperation = "source-over";
   lctx.clearRect(0, 0, lightCanvas.width, lightCanvas.height);
 
-  // 정신력 단계에 따른 시야 반경 보정
-  const sanityFactor = state.sanity <= 30 ? 0.68 : (state.sanity <= 60 ? 0.84 : 1.0);
+  const sanityFactor = state.sanity <= 30
+    ? 0.68
+    : (state.sanity <= SANITY_CONFIG.LOW_VISION_THRESHOLD ? 0.84 : 1.0);
+  const roomInfo = ROOMS[state.currentRoom];
+  const isCursed = roomInfo?.theme === "cursed";
 
   if (state.currentLightOn) {
-    // 평상시 점등도 방 전체가 환하지 않고 플레이어 주변 약 5칸(200px) 위주로 비춤
-    lctx.fillStyle = state.currentRoom.includes("13") ? "rgba(5, 4, 10, 0.72)" : "rgba(6, 8, 15, 0.62)";
+    lctx.fillStyle = isCursed ? "rgba(5, 4, 10, 0.72)" : "rgba(6, 8, 15, 0.62)";
     lctx.fillRect(0, 0, lightCanvas.width, lightCanvas.height);
 
     lctx.globalCompositeOperation = "destination-out";
-    const normalRadius = Math.round(215 * sanityFactor);
+    const flickerDim = (state.lightState === "flicker" && state.prefs.reducedMotion) ? 0.78 : 1.0;
+    const normalRadius = Math.round(215 * sanityFactor * flickerDim);
     const grad = lctx.createRadialGradient(screenPx, screenPy, 36, screenPx, screenPy, normalRadius);
     grad.addColorStop(0, "rgba(0,0,0,1)");
     grad.addColorStop(0.65, "rgba(0,0,0,0.85)");
@@ -332,7 +349,9 @@ function renderRoomLightingOverlay(ctx, canvas, screenPx, screenPy) {
 
     if (state.lightState === "flicker") {
       lctx.globalCompositeOperation = "source-over";
-      lctx.fillStyle = "rgba(210, 230, 255, 0.08)";
+      lctx.fillStyle = state.prefs.reducedMotion
+        ? "rgba(242, 210, 139, 0.12)"
+        : "rgba(210, 230, 255, 0.08)";
       lctx.fillRect(0, 0, lightCanvas.width, lightCanvas.height);
     }
   } else {
@@ -367,7 +386,6 @@ function renderRoomLightingOverlay(ctx, canvas, screenPx, screenPy) {
   ctx.drawImage(lightCanvas, 0, 0);
 }
 
-/* 미니맵: 단서 위치와 추격자 점 제거 (정신력 20 이하 시 미니맵 노이즈 왜곡) */
 function renderMinimap(ctx, canvas) {
   if (!state.showMinimap || state.mode === GAME_MODE.TITLE) return;
   const r = ROOMS[state.currentRoom];
@@ -424,10 +442,9 @@ function renderMinimap(ctx, canvas) {
     });
   }
 
-  // 정신력 20 이하일 때 미니맵 좌표 왜곡 및 가짜 점 표시
-  if (state.sanity <= 20) {
-    const jitterX = Math.sin(state.animTick * 0.4) * 5;
-    const jitterY = Math.cos(state.animTick * 0.35) * 4;
+  if (state.sanity <= SANITY_CONFIG.MINIMAP_DISTORT_THRESHOLD) {
+    const jitterX = state.prefs.reducedMotion ? 2 : Math.sin(state.elapsedTime * 24.0) * 5;
+    const jitterY = state.prefs.reducedMotion ? -2 : Math.cos(state.elapsedTime * 21.0) * 4;
     ctx.fillStyle = "#F09BA8";
     ctx.fillRect(ox + mapW * 0.5 + jitterX, oy + mapH * 0.5 + jitterY, scale, scale);
   }
@@ -438,7 +455,6 @@ function renderMinimap(ctx, canvas) {
 }
 
 export function renderGame(ctx, canvas, getBestInteractTargetFn) {
-  state.animTick++;
   const r = ROOMS[state.currentRoom];
   if (!r) return;
 
@@ -449,12 +465,10 @@ export function renderGame(ctx, canvas, getBestInteractTargetFn) {
   ctx.fillStyle = "#06070c";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  if (state.screenShake > 0) {
+  if (state.screenShake > 0 && !state.prefs.reducedMotion) {
     const sx = (Math.random() - 0.5) * state.screenShake;
     const sy = (Math.random() - 0.5) * state.screenShake;
     ctx.translate(sx, sy);
-    state.screenShake *= 0.85;
-    if (state.screenShake < 0.3) state.screenShake = 0;
   }
 
   ctx.save();
@@ -495,14 +509,12 @@ export function renderGame(ctx, canvas, getBestInteractTargetFn) {
     ctx.textAlign = "left";
   });
 
-  // 환경 소품 (은은한 반짝임만 표시, [!] 없음)
   PROPS.filter(p => p.room === state.currentRoom).forEach(p => {
     const done = state.examinedProps.includes(p.id);
     ctx.fillStyle = done ? "rgba(255,255,255,0.22)" : "rgba(220,232,255,0.62)";
     ctx.fillRect(p.x * TILE + 17, p.y * TILE + 17, 6, 6);
   });
 
-  // 현장 구급 아이템
   FIELD_ITEMS.filter(it => it.room === state.currentRoom && !state.pickedFieldItems.includes(it.id)).forEach(it => {
     ctx.fillStyle = "#8FC9FF";
     ctx.fillRect(it.x * TILE + 14, it.y * TILE + 14, 12, 12);
@@ -515,11 +527,10 @@ export function renderGame(ctx, canvas, getBestInteractTargetFn) {
     ctx.textAlign = "left";
   });
 
-  // 정신력 40 이하 시 가짜 단서(환각) 잔상 표시
-  if (state.sanity <= 40 && state.hallucination.fakeClue) {
+  if (state.sanity <= SANITY_CONFIG.HALLUCINATION_THRESHOLD && state.hallucination.fakeClue) {
     const fc = state.hallucination.fakeClue;
     ctx.save();
-    ctx.globalAlpha = 0.45 + Math.sin(state.animTick * 0.3) * 0.25;
+    ctx.globalAlpha = state.prefs.reducedMotion ? 0.45 : (0.45 + Math.sin(state.elapsedTime * 18.0) * 0.25);
     ctx.fillStyle = "#F09BA8";
     ctx.fillRect(fc.x * TILE + 15, fc.y * TILE + 15, 10, 10);
     ctx.restore();
@@ -579,7 +590,6 @@ export function renderGame(ctx, canvas, getBestInteractTargetFn) {
   renderables.sort((a, b) => a.sortY - b.sortY);
   renderables.forEach(item => item.draw());
 
-  // 인접한 조사 가능 대상에만 돋보기 아이콘 표시
   drawMagnifierIndicator(ctx, getBestInteractTargetFn());
 
   ctx.restore();
@@ -589,7 +599,6 @@ export function renderGame(ctx, canvas, getBestInteractTargetFn) {
   renderRoomLightingOverlay(ctx, canvas, screenPx, screenPy);
   renderMinimap(ctx, canvas);
 
-  // 숨 참기 미니게임 HUD 게이지 (은신 수색 중일 때 캔버스 중앙 하단에 표시)
   if (state.isHiding && state.breathHold.active) {
     const bw = 220;
     const bh = 16;
@@ -619,7 +628,8 @@ export function renderGame(ctx, canvas, getBestInteractTargetFn) {
   }
 
   if (state.sanity < 45) {
-    const alpha = ((45 - state.sanity) / 45) * 0.32 + Math.sin(state.animTick * 0.25) * 0.05;
+    const pulse = state.prefs.reducedMotion ? 0 : Math.sin(state.elapsedTime * 15.0) * 0.05;
+    const alpha = ((45 - state.sanity) / 45) * 0.32 + pulse;
     ctx.fillStyle = `rgba(160, 20, 45, ${Math.max(0.05, alpha)})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }

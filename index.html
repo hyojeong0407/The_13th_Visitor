@@ -3,19 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>13번째 방문자 (The 13th Visitor) v1.4.1</title>
-  <link rel="stylesheet" href="style.css?v=1.4.1" />
+  <title>13번째 방문자 (The 13th Visitor) v1.4.2</title>
+  <link rel="stylesheet" href="style.css?v=1.4.2" />
 </head>
 <body>
-  <!-- 타이틀 오버레이 -->
   <div id="title-overlay">
     <div class="title-card">
-      <div class="title-badge">16-BIT KOREAN OCCULT MYSTERY RPG · <span data-app-version>v1.4.1</span></div>
+      <div class="title-badge">16-BIT KOREAN OCCULT MYSTERY RPG · <span data-app-version>v1.4.2</span></div>
       <h1 class="game-title">13번째 방문자</h1>
       <p class="game-subtitle">
         1985년 10월 13일 밤 11시 47분, 준공 도면에 없는 은하아파트 13층에서 사라진 일가족.<br />
         13년 뒤, 정체불명의 노크 소리가 이어지는 1304호의 진실을 추적하라.
       </p>
+      <div class="photosensitivity-notice" role="note">
+        ⚠ 광과민성 안내: 본 게임에는 형광등 점멸 및 화면 흔들림 연출이 포함되어 있습니다.
+        <button id="btn-title-motion" class="inline-pref-btn" type="button">점멸 완화: OFF</button>
+      </div>
       <div id="save-preview" class="save-preview">저장된 데이터 확인 중...</div>
       <div class="title-buttons">
         <button id="btn-title-new" class="primary-btn">새 게임 시작 (프롤로그 포함)</button>
@@ -29,7 +32,6 @@
     </div>
   </div>
 
-  <!-- 프롤로그 오버레이 -->
   <div id="prologue-overlay">
     <div class="prologue-card">
       <div class="prologue-top">
@@ -48,7 +50,6 @@
     </div>
   </div>
 
-  <!-- 기억 회상 컷신 오버레이 -->
   <div id="flashback-overlay">
     <div class="flashback-card">
       <div class="prologue-top">
@@ -66,15 +67,13 @@
     </div>
   </div>
 
-  <!-- 캔버스 중심 몰입형 메인 게임 뷰포트 -->
   <div class="stage-shell">
     <div class="canvas-stage">
-      <canvas id="screen" width="640" height="360"></canvas>
+      <canvas id="screen" width="640" height="360" role="img" aria-label="13번째 방문자 게임 화면"></canvas>
 
-      <!-- 상단 최소 HUD 오버레이 -->
       <div class="hud-top-bar">
         <div class="hud-stats">
-          <span class="version-pill" data-app-version>v1.4.1</span>
+          <span class="version-pill" data-app-version>v1.4.2</span>
           <span id="hud-location" class="hud-loc">은하아파트 · 1층 복도</span>
           <div class="mini-meter" title="정신력">
             <span>정신력</span>
@@ -92,21 +91,20 @@
           <button id="btn-notebook" class="hud-btn accent">수사 수첩 · 소지품 [Tab]</button>
           <button id="btn-minimap" class="hud-btn">미니맵: ON</button>
           <button id="btn-sound" class="hud-btn">사운드: ON</button>
+          <button id="btn-motion" class="hud-btn">점멸 완화: OFF</button>
           <button id="btn-save" class="hud-btn">저장</button>
           <button id="btn-load" class="hud-btn">불러오기</button>
           <button id="btn-title" class="hud-btn">타이틀</button>
         </div>
       </div>
 
-      <!-- 위기 경고 배너 -->
-      <div id="flicker-banner" class="alert-banner flicker-alert" style="display:none;">
-        ⚡ 형광등 점멸 경고! 시야 밖 은신처에서 [H]로 숨거나 문을 통해 벗어나세요!
+      <div id="flicker-banner" class="alert-banner flicker-alert" role="status" style="display:none;">
+        ⚡ 형광등 점멸 경고! 시야 밖 은신처에서 [H]로 숨거나 새로운 구역으로 벗어나세요!
       </div>
-      <div id="danger-banner" class="alert-banner danger-alert" style="display:none;">
-        ⚠ 정전 & 13번째 방문자 추격 중! 은신 후 [Space]로 숨을 참거나 두 구역 이상 도주하세요!
+      <div id="danger-banner" class="alert-banner danger-alert" role="alert" style="display:none;">
+        ⚠ 정전 & 13번째 방문자 추격 중! 은신 후 [Space]로 숨을 참거나 서로 다른 두 구역을 연속 도주하세요!
       </div>
 
-      <!-- 캔버스 하단 오버레이 대화창 -->
       <div class="dialogue-overlay">
         <div id="dialogue-visual-row">
           <div id="portrait-frame">
@@ -115,7 +113,7 @@
           </div>
           <div id="dialogue-text-col">
             <div id="speaker" class="c-system">SYSTEM</div>
-            <div id="message" class="c-npc">수사를 시작합니다.</div>
+            <div id="message" class="c-npc" aria-live="polite">수사를 시작합니다.</div>
           </div>
         </div>
         <div id="tutorial-banner"></div>
@@ -123,13 +121,12 @@
       </div>
     </div>
 
-    <!-- 하단 컴팩트 조작 바 -->
     <div class="control-bar">
       <div class="dpad">
-        <button data-pad="up">▲</button>
-        <button data-pad="left">◀</button>
-        <button data-pad="down">▼</button>
-        <button data-pad="right">▶</button>
+        <button data-pad="up" aria-label="위로 이동">▲</button>
+        <button data-pad="left" aria-label="왼쪽으로 이동">◀</button>
+        <button data-pad="down" aria-label="아래로 이동">▼</button>
+        <button data-pad="right" aria-label="오른쪽으로 이동">▶</button>
       </div>
       <div class="action-buttons">
         <button id="btn-act-interact" class="act-btn">조사 / 대화 [E]</button>
@@ -139,7 +136,6 @@
     </div>
   </div>
 
-  <!-- Tab 키로 여닫는 슬라이드 오버레이 수사 수첩 드로어 -->
   <aside id="notebook-drawer" class="notebook-drawer">
     <div class="drawer-header">
       <div>
@@ -176,6 +172,6 @@
     </div>
   </aside>
 
-  <script type="module" src="js/main.js?v=1.4.1"></script>
+  <script type="module" src="js/main.js?v=1.4.2"></script>
 </body>
 </html>

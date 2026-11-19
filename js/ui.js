@@ -1,9 +1,41 @@
 /* =========================================================================
-   6. UI · 대화창 포트레이트 · 프롤로그/회상 컷신 · Tab 수첩 메뉴 수납 모듈
+   6. UI · 대화창 포트레이트 · dirty-flag HUD 캐시 · Tab 수첩 메뉴 모듈 (v1.4.2)
    ========================================================================= */
-import { CLUES, COMBINATIONS, PROPS, PROLOGUE_SCENES, FLASHBACK_SCENES, TUTORIAL_STEPS } from "./data.js";
-import { state, GAME_MODE, GHOST_STATE, setGameMode, clearHeldInputs, getUnlockedEndings } from "./state.js";
+import { CLUES, COMBINATIONS, PROPS, TUTORIAL_STEPS } from "./data.js";
+import { UI_CONFIG } from "./config.js";
+import {
+  state, GAME_MODE, GHOST_STATE, setGameMode, clearHeldInputs,
+  getUnlockedEndings, markHudDirty
+} from "./state.js";
 import { playSfx } from "./audio.js";
+
+const hudCache = {
+  location: null,
+  sanityInt: null,
+  sanityColor: null,
+  staminaInt: null,
+  showFlicker: null,
+  showDanger: null,
+  progress: null,
+  endings: null,
+  props: null,
+  sedative: null,
+  reducedMotion: null
+};
+
+const hudRefs = {};
+
+function getHudRef(id) {
+  if (!hudRefs[id]) {
+    hudRefs[id] = document.getElementById(id);
+  }
+  return hudRefs[id];
+}
+
+export function resetHudCache() {
+  Object.keys(hudCache).forEach(k => { hudCache[k] = null; });
+  state.hudDirty = true;
+}
 
 export function escapeHtml(str) {
   return String(str)
@@ -52,8 +84,8 @@ export function formatHighlightedDialogue(rawText) {
 }
 
 export function renderSpeakerPortrait(speakerName) {
-  const pCanvas = document.getElementById("portrait-canvas");
-  const pRole = document.getElementById("portrait-role");
+  const pCanvas = getHudRef("portrait-canvas");
+  const pRole = getHudRef("portrait-role");
   if (!pCanvas || !pRole) return;
 
   const pctx = pCanvas.getContext("2d");
@@ -139,9 +171,9 @@ export function renderSpeakerPortrait(speakerName) {
 }
 
 export function say(speaker, text, speakerClass = "c-system", choices = []) {
-  const sp = document.getElementById("speaker");
-  const msg = document.getElementById("message");
-  const chBox = document.getElementById("choices");
+  const sp = getHudRef("speaker");
+  const msg = getHudRef("message");
+  const chBox = getHudRef("choices");
 
   if (sp) {
     sp.textContent = speaker;
@@ -179,13 +211,13 @@ export function say(speaker, text, speakerClass = "c-system", choices = []) {
 }
 
 export function addLog(text) {
-  const logBox = document.getElementById("event-log");
+  const logBox = getHudRef("event-log");
   if (!logBox) return;
   const div = document.createElement("div");
   div.className = "log-entry";
   div.textContent = `• [${state.currentRoom}] ${text}`;
   logBox.prepend(div);
-  while (logBox.children.length > 35) {
+  while (logBox.children.length > UI_CONFIG.MAX_LOG_ENTRIES) {
     logBox.removeChild(logBox.lastChild);
   }
 }
@@ -193,67 +225,121 @@ export function addLog(text) {
 export function toggleNotebookDrawer(forceState = null) {
   if (state.mode === GAME_MODE.TITLE || state.mode === GAME_MODE.PROLOGUE || state.mode === GAME_MODE.FLASHBACK) return;
   state.notebookOpen = forceState !== null ? forceState : !state.notebookOpen;
-  const drawer = document.getElementById("notebook-drawer");
-  const btn = document.getElementById("btn-notebook");
+  const drawer = getHudRef("notebook-drawer");
+  const btn = getHudRef("btn-notebook");
   if (drawer) drawer.classList.toggle("open", state.notebookOpen);
   if (btn) btn.textContent = state.notebookOpen ? "수사 수첩 닫기 [Tab]" : "수사 수첩 · 소지품 [Tab]";
   if (state.notebookOpen) clearHeldInputs();
   playSfx("switch");
 }
 
-export function updateHUD() {
-  const locEl = document.getElementById("hud-location");
-  if (locEl) locEl.textContent = `은하아파트 · ${state.currentRoom}`;
-
-  const sanText = document.getElementById("sanity-text");
-  if (sanText) sanText.textContent = `${Math.round(state.sanity)}`;
-  const sBar = document.getElementById("sanity-bar");
-  if (sBar) {
-    sBar.style.width = `${state.sanity}%`;
-    sBar.style.background = state.sanity > 60 ? "#8FC9FF" : (state.sanity > 30 ? "#F2D28B" : "#F09BA8");
-  }
-
-  const stamText = document.getElementById("stamina-text");
-  const stamBar = document.getElementById("stamina-bar");
-  if (stamText) stamText.textContent = `${Math.round(state.stamina)}%`;
-  if (stamBar) stamBar.style.width = `${state.stamina}%`;
-
-  const flickerBanner = document.getElementById("flicker-banner");
-  const dangerBanner = document.getElementById("danger-banner");
-  if (flickerBanner) {
-    flickerBanner.style.display = (state.lightState === "flicker" && !state.isHiding && state.mode !== GAME_MODE.ENDED) ? "block" : "none";
-  }
-  if (dangerBanner) {
-    const isChase = (state.ghost.state === GHOST_STATE.CHASE || state.ghost.state === GHOST_STATE.SEARCH);
-    dangerBanner.style.display = (isChase && state.mode !== GAME_MODE.ENDED) ? "block" : "none";
-  }
-
-  const progEl = document.getElementById("progress-text");
-  if (progEl) {
-    progEl.textContent = `단서 ${state.collected.length}/${CLUES.length} · 진실 ${state.deduced.length}/${COMBINATIONS.length}`;
-  }
-
+export function updateHUD(force = false) {
+  const sanInt = Math.round(state.sanity);
+  const stamInt = Math.round(state.stamina);
+  const sanColor = state.sanity > 60 ? "#8FC9FF" : (state.sanity > 30 ? "#F2D28B" : "#F09BA8");
+  const showFlicker = state.lightState === "flicker" && !state.isHiding && state.mode !== GAME_MODE.ENDED;
+  const isChase = state.ghost.state === GHOST_STATE.CHASE || state.ghost.state === GHOST_STATE.SEARCH;
+  const showDanger = isChase && state.mode !== GAME_MODE.ENDED;
+  const progStr = `단서 ${state.collected.length}/${CLUES.length} · 진실 ${state.deduced.length}/${COMBINATIONS.length}`;
   const unlocked = getUnlockedEndings();
-  const endEl = document.getElementById("ending-tracker");
-  if (endEl) {
-    endEl.textContent = `달성 엔딩: ${unlocked.length}/3` + (unlocked.length ? ` (${unlocked.join(", ")})` : "");
-  }
-
-  const propEl = document.getElementById("prop-tracker");
-  if (propEl) {
-    propEl.textContent = `환경 조사: ${state.examinedProps.length}/${PROPS.length}`;
-  }
-
+  const endStr = `달성 엔딩: ${unlocked.length}/3` + (unlocked.length ? ` (${unlocked.join(", ")})` : "");
+  const propStr = `환경 조사: ${state.examinedProps.length}/${PROPS.length}`;
   const sedCount = state.inventory.sedative || 0;
-  const btnSed = document.getElementById("btn-use-sedative");
-  if (btnSed) {
-    btnSed.textContent = `안정제 [Q] (${sedCount})`;
-    btnSed.disabled = sedCount <= 0;
+  const reduced = Boolean(state.prefs.reducedMotion);
+
+  if (!force && !state.hudDirty &&
+      hudCache.location === state.currentRoom &&
+      hudCache.sanityInt === sanInt &&
+      hudCache.staminaInt === stamInt &&
+      hudCache.showFlicker === showFlicker &&
+      hudCache.showDanger === showDanger &&
+      hudCache.progress === progStr &&
+      hudCache.endings === endStr &&
+      hudCache.props === propStr &&
+      hudCache.sedative === sedCount &&
+      hudCache.reducedMotion === reduced) {
+    return;
+  }
+
+  state.hudDirty = false;
+
+  if (hudCache.location !== state.currentRoom) {
+    hudCache.location = state.currentRoom;
+    const locEl = getHudRef("hud-location");
+    if (locEl) locEl.textContent = `은하아파트 · ${state.currentRoom}`;
+  }
+
+  if (hudCache.sanityInt !== sanInt || hudCache.sanityColor !== sanColor) {
+    hudCache.sanityInt = sanInt;
+    hudCache.sanityColor = sanColor;
+    const sanText = getHudRef("sanity-text");
+    if (sanText) sanText.textContent = `${sanInt}`;
+    const sBar = getHudRef("sanity-bar");
+    if (sBar) {
+      sBar.style.width = `${sanInt}%`;
+      sBar.style.background = sanColor;
+    }
+  }
+
+  if (hudCache.staminaInt !== stamInt) {
+    hudCache.staminaInt = stamInt;
+    const stamText = getHudRef("stamina-text");
+    const stamBar = getHudRef("stamina-bar");
+    if (stamText) stamText.textContent = `${stamInt}%`;
+    if (stamBar) stamBar.style.width = `${stamInt}%`;
+  }
+
+  if (hudCache.showFlicker !== showFlicker) {
+    hudCache.showFlicker = showFlicker;
+    const flickerBanner = getHudRef("flicker-banner");
+    if (flickerBanner) flickerBanner.style.display = showFlicker ? "block" : "none";
+  }
+
+  if (hudCache.showDanger !== showDanger) {
+    hudCache.showDanger = showDanger;
+    const dangerBanner = getHudRef("danger-banner");
+    if (dangerBanner) dangerBanner.style.display = showDanger ? "block" : "none";
+  }
+
+  if (hudCache.progress !== progStr) {
+    hudCache.progress = progStr;
+    const progEl = getHudRef("progress-text");
+    if (progEl) progEl.textContent = progStr;
+  }
+
+  if (hudCache.endings !== endStr) {
+    hudCache.endings = endStr;
+    const endEl = getHudRef("ending-tracker");
+    if (endEl) endEl.textContent = endStr;
+  }
+
+  if (hudCache.props !== propStr) {
+    hudCache.props = propStr;
+    const propEl = getHudRef("prop-tracker");
+    if (propEl) propEl.textContent = propStr;
+  }
+
+  if (hudCache.sedative !== sedCount) {
+    hudCache.sedative = sedCount;
+    const btnSed = getHudRef("btn-use-sedative");
+    if (btnSed) {
+      btnSed.textContent = `안정제 [Q] (${sedCount})`;
+      btnSed.disabled = sedCount <= 0;
+    }
+  }
+
+  if (hudCache.reducedMotion !== reduced) {
+    hudCache.reducedMotion = reduced;
+    const label = `점멸 완화: ${reduced ? "ON" : "OFF"}`;
+    const btnHud = getHudRef("btn-motion");
+    const btnTitle = getHudRef("btn-title-motion");
+    if (btnHud) btnHud.textContent = label;
+    if (btnTitle) btnTitle.textContent = label;
   }
 }
 
 export function renderInventoryUI(onUseConsumable) {
-  const bag = document.getElementById("item-bag");
+  const bag = getHudRef("item-bag");
   if (!bag) return;
   const sedCount = state.inventory.sedative || 0;
   bag.innerHTML = `
@@ -273,6 +359,7 @@ export function renderInventoryUI(onUseConsumable) {
   `;
   const btn = document.getElementById("btn-bag-sedative");
   if (btn) btn.addEventListener("click", () => onUseConsumable("sedative"));
+  markHudDirty();
 }
 
 export function isClueInterpreted(clue) {
@@ -289,7 +376,7 @@ export function getClueDisplayDescription(clue) {
 }
 
 export function renderClueUI(onToggleClue) {
-  const list = document.getElementById("clue-list");
+  const list = getHudRef("clue-list");
   if (list) {
     if (state.collected.length === 0) {
       list.textContent = "수집한 단서가 없습니다.";
@@ -309,17 +396,28 @@ export function renderClueUI(onToggleClue) {
     }
   }
 
-  const dedBox = document.getElementById("deduction-list");
+  const dedBox = getHudRef("deduction-list");
   if (dedBox) {
     if (state.deduced.length === 0) {
       dedBox.textContent = "아직 조합으로 밝혀낸 진실이 없습니다.";
     } else {
-      dedBox.innerHTML = state.deduced.map(did => {
+      dedBox.innerHTML = "";
+      state.deduced.forEach(did => {
         const d = COMBINATIONS.find(x => x.id === did);
-        return d ? `<div class="deduction-item"><strong>${d.title}</strong><br><span>${d.summary}</span></div>` : "";
-      }).join("");
+        if (!d) return;
+        const item = document.createElement("div");
+        item.className = "deduction-item";
+        const strong = document.createElement("strong");
+        strong.textContent = d.title;
+        const br = document.createElement("br");
+        const span = document.createElement("span");
+        span.textContent = d.summary;
+        item.append(strong, br, span);
+        dedBox.appendChild(item);
+      });
     }
   }
+  markHudDirty();
 }
 
 export function drawSceneArt(canvasId, artType) {
@@ -383,7 +481,7 @@ export function drawSceneArt(canvasId, artType) {
 }
 
 export function renderTutorialBanner() {
-  const banner = document.getElementById("tutorial-banner");
+  const banner = getHudRef("tutorial-banner");
   if (!banner) return;
   if (state.tutorialStep <= 0 || state.tutorialStep > TUTORIAL_STEPS.length || state.flags.tutorialDone) {
     banner.style.display = "none";

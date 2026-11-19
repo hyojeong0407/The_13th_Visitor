@@ -1,0 +1,57 @@
+/* =========================================================================
+   0-1. 게임 상수 및 밸런스 설정 모듈 (v1.4.2)
+   ========================================================================= */
+export const TILE = 40;
+export const FLICKER_DURATION = 10.0;
+
+export const PLAYER_CONFIG = Object.freeze({
+  WALK_SPEED: 165,          // 4.125 tiles/sec
+  SPRINT_SPEED: 270,        // 6.75 tiles/sec
+  SPRINT_STEP_COST: 8,
+  STAMINA_REGEN: 18,
+  MIN_SPRINT_STAMINA: 5
+});
+
+export const GHOST_CONFIG = Object.freeze({
+  BASE_SPEED_TILES: 4.95,   // 걷기(4.125) < 원혼(4.95~5.30) < 질주(6.75)
+  LOW_SANITY_BONUS_TILES: 0.35,
+  ENTRY_DELAY: 0.85,
+  HIDE_MIN_DIST_TILES: 2.3,
+  PROXIMITY_SANITY_DIST_TILES: 3.0,
+  PROXIMITY_SANITY_DRAIN: 5.0,
+  CATCH_DIST_TILES: 0.55,
+  SEARCH_PATROL_DURATION: 5.5,
+  ESCAPE_ROOMS_REQUIRED: 2
+});
+
+export const BREATH_CONFIG = Object.freeze({
+  BASE_GAUGE: 72,
+  REPEAT_GAUGE_PENALTY: 14,
+  MIN_INITIAL_GAUGE: 38,
+  BASE_DURATION: 3.0,
+  REPEAT_DURATION_BONUS: 0.6,
+  MAX_DURATION: 5.0,
+  BASE_DRAIN_RATE: 24,
+  REPEAT_DRAIN_PENALTY: 7,
+  PRESS_GAIN: 22
+});
+
+export const SANITY_CONFIG = Object.freeze({
+  INITIAL: 100,
+  MIN: 0,
+  MAX: 100,
+  SEDATIVE_RESTORE: 30,
+  DARK_DRAIN_PER_SEC: 1.1,
+  ESCAPE_REWARD: 4,
+  HIDE_SUCCESS_REWARD: 4,
+  WRONG_COMBO_PENALTY: -5,
+  ALL_PROPS_REWARD: 10,
+  LOW_VISION_THRESHOLD: 60,
+  HALLUCINATION_THRESHOLD: 40,
+  MINIMAP_DISTORT_THRESHOLD: 20
+});
+
+export const UI_CONFIG = Object.freeze({
+  MAX_LOG_ENTRIES: 35,
+  PREFS_STORAGE_KEY: "visitorPrefs"
+});
