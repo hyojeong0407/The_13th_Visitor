@@ -1,0 +1,574 @@
+/* =========================================================================
+   《13번째 방문자》 v1.1.1 - 형광등 점멸 & 은신 시스템 적용 스타일시트
+   ========================================================================= */
+* {
+  box-sizing: border-box;
+  user-select: none;
+}
+
+body {
+  margin: 0;
+  background: #06070c;
+  color: #FFFFFF;
+  font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Dotum", sans-serif;
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  min-height: 100vh;
+}
+
+#game {
+  width: min(980px, 100%);
+  background: #0d0f18;
+  border: 3px solid #4d4759;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.95);
+  padding: 12px;
+}
+
+/* 상단 헤더 */
+#topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: #141724;
+  border: 2px solid #595368;
+  padding: 8px 14px;
+  margin-bottom: 8px;
+}
+
+.title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#topbar h1 {
+  margin: 0;
+  font-size: 20px;
+  color: #F2D28B;
+  letter-spacing: 3px;
+  text-shadow: 2px 2px 0 #000, 0 0 8px rgba(242, 210, 139, 0.35);
+}
+
+.ver-badge {
+  background: #2b2436;
+  border: 1px solid #F2D28B;
+  color: #F2D28B;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 2px 6px;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.meta-info {
+  font-size: 13px;
+  color: #FFFFFF;
+  text-shadow: 1px 1px 0 #000;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.meta-gold {
+  color: #F2D28B;
+  font-weight: bold;
+}
+
+/* 상태창 HUD */
+#hud {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(195px, 1fr));
+  gap: 8px;
+  background: #121520;
+  border: 2px solid #4d4859;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.hud-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hud-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hud-label {
+  color: #F2D28B;
+  font-weight: bold;
+}
+
+.hud-val {
+  color: #FFFFFF;
+  font-weight: bold;
+}
+
+.hud-sub {
+  font-size: 11px;
+  color: #d6d9e6;
+}
+
+.bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: #232636;
+  border: 1px solid #5c576b;
+}
+
+#sanity-bar {
+  height: 100%;
+  width: 100%;
+  background: #8FC9FF;
+  transition: width 0.25s, background 0.25s;
+}
+
+#light-bar {
+  height: 100%;
+  width: 100%;
+  background: #F2D28B;
+  transition: width 0.2s, background 0.2s;
+}
+
+#stamina-bar {
+  height: 100%;
+  width: 100%;
+  background: #9ce0b8;
+  transition: width 0.1s;
+}
+
+
+/* 형광등 점멸 전조 경고 배너 */
+#flicker-banner {
+  display: none;
+  background: #3d2e12;
+  border: 2px solid #F2D28B;
+  color: #F2D28B;
+  font-weight: bold;
+  text-align: center;
+  padding: 7px;
+  margin-bottom: 8px;
+  letter-spacing: 0.4px;
+  text-shadow: 1px 1px 0 #000;
+  animation: pulseFlickerBanner 0.35s infinite alternate;
+}
+
+@keyframes pulseFlickerBanner {
+  from {
+    background: #291f0c;
+    border-color: #b89b5e;
+  }
+  to {
+    background: #4f3c16;
+    border-color: #F2D28B;
+    box-shadow: 0 0 12px rgba(242, 210, 139, 0.5);
+  }
+}
+
+/* 추격 위험 배너 */
+#danger-banner {
+  display: none;
+  background: #4d0d16;
+  border: 2px solid #F09BA8;
+  color: #F09BA8;
+  font-weight: bold;
+  text-align: center;
+  padding: 7px;
+  margin-bottom: 8px;
+  letter-spacing: 0.5px;
+  text-shadow: 1px 1px 0 #000;
+  animation: pulseDanger 0.65s infinite alternate;
+}
+
+@keyframes pulseDanger {
+  from {
+    background: #3b0810;
+    box-shadow: 0 0 6px #F09BA8;
+  }
+  to {
+    background: #6e1220;
+    box-shadow: 0 0 18px #ff4d6d;
+  }
+}
+
+/* 중앙 게임 캔버스 및 타이틀 오버레이 */
+#canvas-wrap {
+  position: relative;
+  width: 100%;
+  border: 4px solid #585266;
+  background: #090a10;
+  overflow: hidden;
+}
+
+#screen {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+#canvas-wrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.16) 3px
+  );
+  pointer-events: none;
+  z-index: 2;
+}
+
+#title-overlay {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, rgba(16, 18, 28, 0.86) 0%, rgba(5, 6, 11, 0.96) 100%);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+  z-index: 3;
+}
+
+.title-card {
+  max-width: 520px;
+  width: 100%;
+  background: rgba(18, 20, 32, 0.95);
+  border: 2px solid #F2D28B;
+  padding: 20px 24px;
+  text-align: center;
+  box-shadow: 0 0 28px rgba(0, 0, 0, 0.9);
+}
+
+.title-sub {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #F09BA8;
+  margin-bottom: 6px;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.title-card h2 {
+  margin: 0 0 10px 0;
+  font-size: 28px;
+  color: #F2D28B;
+  letter-spacing: 4px;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.title-desc {
+  font-size: 13px;
+  line-height: 1.65;
+  color: #FFFFFF;
+  margin: 0 0 16px 0;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.title-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.primary-btn {
+  border-color: #F2D28B;
+  color: #F2D28B;
+  background: #2a2638;
+}
+
+.save-preview {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #8FC9FF;
+  text-shadow: 1px 1px 0 #000;
+}
+
+/* 대화창 및 선택지 (대화 글자색 규칙 엄격 준수) */
+#dialogue-box {
+  margin-top: 8px;
+  background: #10131e;
+  border: 2px solid #756e85;
+  padding: 12px 14px;
+  min-height: 126px;
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.8);
+}
+
+#speaker {
+  font-weight: bold;
+  font-size: 15px;
+  margin-bottom: 6px;
+  text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+}
+
+#message {
+  font-size: 14px;
+  line-height: 1.65;
+  white-space: pre-line;
+  color: #FFFFFF;
+  text-shadow: 1px 1px 0 #000, 0 1px 3px #000;
+}
+
+.c-system { color: #F2D28B !important; }
+.c-hero   { color: #8FC9FF !important; }
+.c-npc    { color: #FFFFFF !important; }
+.c-ghost  { color: #F09BA8 !important; }
+.c-clue   { color: #F2D28B !important; }
+
+#choices {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.choice-btn {
+  text-align: left;
+  background: #1d2133;
+  border: 2px solid #8FC9FF;
+  color: #FFFFFF;
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.choice-btn:hover {
+  background: #2b324d;
+  border-color: #F2D28B;
+  color: #F2D28B;
+}
+
+/* 메뉴 버튼 영역 */
+#actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+button {
+  background: #242738;
+  border: 2px solid #756e85;
+  color: #FFFFFF;
+  padding: 8px 11px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  text-shadow: 1px 1px 0 #000;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+button:hover:not(:disabled) {
+  background: #3a3e57;
+  border-color: #F2D28B;
+  color: #F2D28B;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 수사 수첩 / 소지품 / 도출된 진실 / 사건 기록 */
+#panel-area {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  #panel-area {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sub-panel {
+  background: #10131e;
+  border: 2px solid #524d61;
+  padding: 10px 12px;
+}
+
+.sub-panel h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #F2D28B;
+  text-shadow: 1px 1px 0 #000;
+  border-bottom: 1px solid #383445;
+  padding-bottom: 4px;
+}
+
+.sub-heading {
+  margin-top: 10px !important;
+}
+
+#clue-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-height: 125px;
+  overflow-y: auto;
+}
+
+.clue-chip {
+  background: #1e2233;
+  border: 1px solid #756e85;
+  color: #FFFFFF;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.clue-chip.selected {
+  border-color: #F2D28B;
+  background: #3b3324;
+  color: #F2D28B;
+}
+
+#deduction-list {
+  font-size: 12px;
+  color: #F2D28B;
+  line-height: 1.55;
+  max-height: 135px;
+  overflow-y: auto;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.deduction-item {
+  margin-bottom: 6px;
+}
+
+.deduction-item span {
+  color: #FFFFFF;
+}
+
+.item-bag {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bag-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #181b29;
+  border: 1px solid #484357;
+  padding: 6px 8px;
+  font-size: 12px;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.bag-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bag-name {
+  color: #8FC9FF;
+  font-weight: bold;
+}
+
+.bag-desc {
+  color: #FFFFFF;
+  font-size: 11px;
+}
+
+#event-log {
+  font-size: 12px;
+  color: #FFFFFF;
+  line-height: 1.5;
+  max-height: 145px;
+  overflow-y: auto;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.log-entry {
+  margin-bottom: 4px;
+  border-bottom: 1px dashed #26293a;
+  padding-bottom: 3px;
+}
+
+/* 모바일/마우스 보조 패드 */
+#mobile-pad {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #2b2e40;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dpad {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 40px);
+  gap: 3px;
+}
+
+.dpad button {
+  padding: 8px 0;
+}
+
+.help-text {
+  font-size: 12px;
+  color: #FFFFFF;
+  text-shadow: 1px 1px 0 #000;
+  line-height: 1.55;
+}
+
+/* v1.0 정식판 추가 스타일: 시계 경고 & 엔딩 도감 */
+.meta-danger {
+  color: #F09BA8 !important;
+  animation: pulseClock 0.9s infinite alternate;
+}
+
+@keyframes pulseClock {
+  from { opacity: 0.75; }
+  to { opacity: 1; text-shadow: 0 0 8px #F09BA8; }
+}
+
+.ending-gallery {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(12, 14, 24, 0.96);
+  border: 1px solid #756e85;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #FFFFFF;
+}
+
+.ending-gallery-item {
+  padding: 4px 0;
+  border-bottom: 1px dashed #2e3247;
+}
+
+.ending-gallery-item:last-child {
+  border-bottom: none;
+}
+
+.ending-unlocked {
+  color: #F2D28B;
+  font-weight: bold;
+}
+
+.ending-locked {
+  color: #9ba0b8;
+}
