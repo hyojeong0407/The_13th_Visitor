@@ -3,6 +3,7 @@
    ========================================================================= */
 import { APP_VERSION } from "../version.js";
 import { ROOMS } from "./data.js";
+import { safeGet, safeSet } from "./storage.js";
 
 export const TILE = 40;
 export const FLICKER_DURATION = 10.0;
@@ -126,7 +127,7 @@ export function clearHeldInputs() {
 
 export function getUnlockedEndings() {
   try {
-    const raw = localStorage.getItem("visitorEndings");
+    const raw = safeGet("visitorEndings");
     return raw ? JSON.parse(raw) : [];
   } catch (e) {
     return [];
@@ -137,13 +138,13 @@ export function recordEndingUnlock(type) {
   const list = getUnlockedEndings();
   if (!list.includes(type)) {
     list.push(type);
-    localStorage.setItem("visitorEndings", JSON.stringify(list));
+    safeSet("visitorEndings", JSON.stringify(list));
   }
 }
 
 export function hasValidSaveData() {
   try {
-    const raw = localStorage.getItem("visitorSave");
+    const raw = safeGet("visitorSave");
     if (!raw) return false;
     const data = JSON.parse(raw);
     return Boolean(data && typeof data === "object");
@@ -173,12 +174,10 @@ export function buildSavePayload() {
 }
 
 export function autoSaveGame() {
-  if (state.mode === GAME_MODE.ENDED || state.mode === GAME_MODE.TITLE) return;
+  if (state.mode === GAME_MODE.ENDED || state.mode === GAME_MODE.TITLE || state.mode === GAME_MODE.PROLOGUE) return;
   if (state.ghost.state !== GHOST_STATE.IDLE) return;
-  try {
-    const data = buildSavePayload();
-    localStorage.setItem("visitorSave", JSON.stringify(data));
-  } catch (e) {}
+  const data = buildSavePayload();
+  safeSet("visitorSave", JSON.stringify(data));
 }
 
 export function applyLoadedData(data, findNearestWalkableFn, snapCameraFn) {

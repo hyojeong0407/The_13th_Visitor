@@ -12,6 +12,7 @@ import {
   getUnlockedEndings, recordEndingUnlock, hasValidSaveData,
   buildSavePayload, autoSaveGame, applyLoadedData, resetStateFields
 } from "./state.js";
+import { safeGet, safeSet, isStorageRestricted } from "./storage.js";
 import { initAudio, toggleSound, playSfx } from "./audio.js";
 import {
   isBlocked, findNearestWalkable, startGhostWarning,
@@ -589,6 +590,8 @@ function toggleHide() {
 }
 
 function checkStepEvents() {
+  if (state.mode !== GAME_MODE.PLAY || state.ghost.state !== GHOST_STATE.IDLE) return;
+
   const ghostCallbacks = {
     addLog,
     say,
@@ -803,6 +806,15 @@ function interact() {
   }
 }
 
+/* 일회성 보상·이벤트 플래그 래퍼 */
+function once(flagName, action) {
+  return () => {
+    if (state.flags[flagName]) return;
+    state.flags[flagName] = true;
+    action();
+  };
+}
+
 /* 경비원 박만식 자백 3단계화 & 주민 대화 */
 function talkToNPC(npc) {
   if (npc.id === "park") {
@@ -848,16 +860,19 @@ function talkToNPC(npc) {
       });
     }
 
-    // 3단계: 진실 5 또는 방문자 명부 확보 후 완전 자백
-    if (state.flags.parkStage2 && (state.deduced.includes("combo_past") || state.collected.includes("ledger"))) {
+    // 3단계: 진실 5 또는 방문자 명부 확보 후 완전 자백 (일회성 가드)
+    if (
+      state.flags.parkStage2 &&
+      !state.flags.parkConfessed &&
+      (state.deduced.includes("combo_past") || state.collected.includes("ledger"))
+    ) {
       choices.push({
         label: "[3단계 완전 자백] 방문자 명부와 강 순경 아들의 진실을 내민다",
-        action: () => {
-          state.flags.parkConfessed = true;
+        action: once("parkConfessed", () => {
           changeSanity(10, "박만식의 완전한 참회와 증언");
           addLog("박만식이 강현우와 그의 아버지(강 순경)에 대한 모든 진실을 자백했다.");
           say("박만식 (경비원)", "자네 얼굴을 보니 이제야 알겠구먼... 그날 밤 강 순경님이 윤서를 구하려 13층에 올라갔다가 실종됐고, 아드님만 홀로 살아남았소. 부디 13층의 비극을 끝내주게!", "c-npc");
-        }
+        })
       });
     }
 
@@ -874,15 +889,14 @@ function talkToNPC(npc) {
       }
     ];
 
-    if (state.deduced.includes("combo_yoonseo") || state.collected.includes("medical")) {
+    if (!state.flags.hanTruth && (state.deduced.includes("combo_yoonseo") || state.collected.includes("medical"))) {
       choices.push({
         label: "[진실 제시] '윤서'라는 아이에 대해 알고 있는지 묻는다",
-        action: () => {
-          state.flags.hanTruth = true;
+        action: once("hanTruth", () => {
           changeSanity(6, "한미정의 진심 어린 증언");
           addLog("한미정이 윤서의 옛 피아노 선생이었음을 밝히고 진실을 증언했다.");
           say("한미정 (주민)", "윤서 이름을 어떻게 아세요...? 저는 13년 전 윤서의 피아노 선생님이었어요. 윤서는 착하고 여린 아이였어요. 그날 밤 윤서를 구하러 갔던 한 소년도 있었는데...", "c-npc");
-        }
+        })
       });
     }
 
@@ -901,30 +915,32 @@ function talkToNPC(npc) {
     ];
 
     if (state.deduced.includes("combo_yoonseo") || state.deduced.includes("combo_past")) {
-      choices.push({
-        label: "\"윤서야, 이제 무서워하지 마. 그날 밤의 진실을 모두 기억해냈어.\"",
-        action: () => {
-          state.flags.savedYoonseo = true;
-          state.flags.door1304Unlocked = true;
-          setGhostState(GHOST_STATE.IDLE);
-          state.lightState = "on";
-          changeSanity(15, "윤서의 원한 완화");
-          addLog("윤서에게 진실을 전하여 그녀의 두려움을 진정시켰다.");
-          say("윤서", "...정말 기억해 주신 거예요? 13년 동안 아무도 제 목소리를 들어주지 않았어요. 숨겨진 방의 거울을 봐주세요... 모든 진실이 거기 있어요.", "c-npc");
-        }
-      });
-    } else {
+      if (!state.flags.savedYoonseo) {
+        choices.push({
+          label: "\"윤서야, 이제 무서워하지 마. 그날 밤의 진실을 모두 기억해냈어.\"",
+          action: once("savedYoonseo", () => {
+            state.flags.door1304Unlocked = true;
+            setGhostState(GHOST_STATE.IDLE);
+            state.lightState = "on";
+            changeSanity(15, "윤서의 원한 완화");
+            addLog("윤서에게 진실을 전하여 그녀의 두려움을 진정시켰다.");
+            say("윤서", "...정말 기억해 주신 거예요? 13년 동안 아무도 제 목소리를 들어주지 않았어요. 숨겨진 방의 거울을 봐주세요... 모든 진실이 거기 있어요.", "c-npc");
+          })
+        });
+      }
+    } else if (!state.flags.provokedYoonseo) {
       choices.push({
         label: "\"원혼이라면 당장 사라져라!\" (적대적으로 경고한다)",
-        action: () => {
+        action: once("provokedYoonseo", () => {
           changeSanity(-18, "13번째 방문자의 분노 촉발");
+          if (state.mode === GAME_MODE.ENDED) return;
           startGhostWarning(
             "13층 복도", 22, 4,
             "윤서가 겁에 질려 물러서자 복도 끝에서 무거운 발소리와 함께 형광등이 격렬하게 깜빡이기 시작한다! 은신처를 찾거나 구역을 벗어나라 [H]!",
             "형광등이 산산조각 나며 정전되었다! 광기에 잠식된 13번째 방문자가 비명을 지르며 달려온다!",
             { addLog, say, updateHUD, onTutorial4: () => startTutorialStep(4) }
           );
-        }
+        })
       });
     }
 
@@ -979,7 +995,7 @@ function triggerEnding(type) {
       "거울이 산산조각 나며 봉인되어 있던 13년 전의 기억이 완전히 되살아났다.\n\n1985년 10월 13일, 아버지의 광기 속에서 윤서를 구하려다 비상구 앞에 쓰러졌던 소년이 바로 강현우 자신이었다. 윤서는 악령이 아니라, 자신을 기억해 줄 마지막 방문자를 13년 동안 기다려 온 소녀의 영혼이었다.\n\n강현우가 윤서의 이름을 부르며 진실을 세상에 밝히겠다고 맹세하자, 13층의 붉은 어둠이 걷히고 방문자 명부의 마지막 줄이 사라졌다.",
       "c-clue",
       [
-        { label: "처음부터 다시 플레이하기", action: () => resetGame(true) },
+        { label: "처음부터 다시 플레이하기", action: () => startNewGameWithConfirm(true, false) },
         { label: "타이틀 화면으로 이동", action: returnToTitle }
       ]
     );
@@ -991,7 +1007,7 @@ function triggerEnding(type) {
       "강현우는 확보한 물증만을 토대로 1304호 일가족 실종 사건의 수사 보고서를 제출했다.\n\n사건은 서류상 해결되었지만, 윤서의 진실과 강현우 자신의 잃어버린 기억은 끝내 밝혀지지 않았다. 1년 뒤인 1999년 10월 13일 밤 11시 47분, 현관문 앞에서 다시 세 번의 노크 소리가 들려왔다.",
       "c-system",
       [
-        { label: "진실을 밝히기 위해 다시 도전하기", action: () => resetGame(false) },
+        { label: "진실을 밝히기 위해 다시 도전하기", action: () => startNewGameWithConfirm(false, false) },
         { label: "타이틀 화면으로 이동", action: returnToTitle }
       ]
     );
@@ -1003,7 +1019,7 @@ function triggerEnding(type) {
       "진실을 깨닫지 못한 채 문을 연 순간, 등 뒤의 복도가 어둠 속으로 사라졌다.\n\n방문자 명부의 13번째 칸에 적힌 '강현우'라는 이름이 붉게 물든다. 이제 강현우는 다음 형사가 찾아올 때까지 존재하지 않는 13층 복도를 배회하는 13번째 방문자가 되었다.",
       "c-ghost",
       [
-        { label: "처음부터 다시 플레이하기", action: () => resetGame(false) },
+        { label: "처음부터 다시 플레이하기", action: () => startNewGameWithConfirm(false, false) },
         { label: "타이틀 화면으로 이동", action: returnToTitle }
       ]
     );
@@ -1020,7 +1036,7 @@ function triggerGameOver(title, reason) {
 
   const choices = [];
   if (hasValidSaveData()) choices.push({ label: "마지막 저장 불러오기", action: loadGame });
-  choices.push({ label: "새 게임 시작", action: () => resetGame(false) });
+  choices.push({ label: "새 게임 시작", action: () => startNewGameWithConfirm(false, false) });
   choices.push({ label: "타이틀 화면으로 이동", action: returnToTitle });
 
   say(`GAME OVER — ${title}`, `${reason}\n\n은하아파트 13층의 기록에는 또 한 명의 실종자가 추가되었다.`, "c-ghost", choices);
@@ -1030,11 +1046,12 @@ function triggerGameOver(title, reason) {
 function refreshTitleScreen() {
   const preview = document.getElementById("save-preview");
   const loadBtn = document.getElementById("btn-title-load");
-  const raw = localStorage.getItem("visitorSave");
+  const raw = safeGet("visitorSave");
   const unlocked = getUnlockedEndings();
+  const storageNotice = isStorageRestricted() ? " · (브라우저 저장 제한: 임시 메모리 모드)" : "";
 
   if (!raw) {
-    if (preview) preview.textContent = `저장된 데이터 없음 · 달성 엔딩: ${unlocked.length}/3`;
+    if (preview) preview.textContent = `저장된 데이터 없음 · 달성 엔딩: ${unlocked.length}/3${storageNotice}`;
     if (loadBtn) loadBtn.disabled = true;
   } else {
     try {
@@ -1043,7 +1060,7 @@ function refreshTitleScreen() {
       const cCount = Array.isArray(data.collected) ? data.collected.length : 0;
       const dCount = Array.isArray(data.deduced) ? data.deduced.length : 0;
       const savedAt = data.savedAt ? ` (${data.savedAt})` : "";
-      if (preview) preview.textContent = `저장 기록: [${rName}] 단서 ${cCount}개 · 진실 ${dCount}개${savedAt} · 엔딩: ${unlocked.length}/3`;
+      if (preview) preview.textContent = `저장 기록: [${rName}] 단서 ${cCount}개 · 진실 ${dCount}개${savedAt} · 엔딩: ${unlocked.length}/3${storageNotice}`;
       if (loadBtn) loadBtn.disabled = false;
     } catch (e) {
       if (preview) preview.textContent = "저장 데이터를 읽을 수 없습니다.";
@@ -1063,14 +1080,19 @@ function saveGame() {
     return;
   }
   const data = buildSavePayload();
-  localStorage.setItem("visitorSave", JSON.stringify(data));
+  const persisted = safeSet("visitorSave", JSON.stringify(data));
   playSfx("clue");
-  addLog(`현재 수사 진행 상황을 저장했다. (${data.savedAt})`);
-  say("SYSTEM", `수사 진행 상황이 안전하게 저장되었습니다. (${data.savedAt})`, "c-system");
+  if (persisted) {
+    addLog(`현재 수사 진행 상황을 저장했다. (${data.savedAt})`);
+    say("SYSTEM", `수사 진행 상황이 안전하게 저장되었습니다. (${data.savedAt})`, "c-system");
+  } else {
+    addLog(`브라우저 저장소 제한으로 현재 세션 메모리에 임시 저장했다. (${data.savedAt})`);
+    say("SYSTEM", `브라우저 저장소가 제한되어 현재 탭의 임시 메모리에 저장되었습니다. (${data.savedAt})`, "c-system");
+  }
 }
 
 function loadGame() {
-  const raw = localStorage.getItem("visitorSave");
+  const raw = safeGet("visitorSave");
   if (!raw) {
     say("SYSTEM", "저장된 데이터가 없습니다. 새 게임을 시작해 주세요.", "c-system");
     return;
@@ -1092,6 +1114,19 @@ function loadGame() {
   }
 }
 
+function startNewGameWithConfirm(withPrologue = false, hideTitleOverlay = false) {
+  if (hasValidSaveData()) {
+    const ok = window.confirm("기존 저장 데이터가 있습니다. 새 게임을 시작하시겠습니까?\n(방 이동이나 단서 획득 시 기존 저장 데이터가 덮어씌워집니다.)");
+    if (!ok) return false;
+  }
+  if (hideTitleOverlay) {
+    const ov = document.getElementById("title-overlay");
+    if (ov) ov.style.display = "none";
+  }
+  resetGame(withPrologue);
+  return true;
+}
+
 function resetGame(withPrologue = false) {
   resetStateFields(snapCamera);
   renderTutorialBanner();
@@ -1100,7 +1135,6 @@ function resetGame(withPrologue = false) {
   renderInventoryUI(useConsumable);
   renderClueUI(toggleSelectClue);
   updateHUD();
-  autoSaveGame();
   addLog("1998년 10월 13일 23:47, 은하아파트 수사를 시작했다.");
   say("강현우", "여기가 은하아파트 1층 복도인가... 가구와 주변 사물에 가까이 다가가 돋보기가 뜨면 [E]로 조사해 보자.", "c-hero");
   if (withPrologue) startPrologue();
@@ -1179,8 +1213,7 @@ function gameLoop(now) {
 function bindUIEvents() {
   document.getElementById("btn-title-new")?.addEventListener("click", () => {
     initAudio();
-    document.getElementById("title-overlay").style.display = "none";
-    resetGame(true);
+    startNewGameWithConfirm(true, true);
   });
 
   document.getElementById("btn-title-load")?.addEventListener("click", () => {
@@ -1243,7 +1276,7 @@ document.addEventListener("keydown", e => {
     return;
   }
 
-  if (state.mode === GAME_MODE.DIALOGUE && state.activeChoices.length > 0) {
+  if ((state.mode === GAME_MODE.DIALOGUE || state.mode === GAME_MODE.ENDED) && state.activeChoices.length > 0) {
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(code)) e.preventDefault();
     if (e.repeat) return;
     if (code.startsWith("Digit")) {
@@ -1254,7 +1287,7 @@ document.addEventListener("keydown", e => {
         state.activeChoices = [];
         const chBox = document.getElementById("choices");
         if (chBox) chBox.innerHTML = "";
-        setGameMode(GAME_MODE.PLAY);
+        if (state.mode === GAME_MODE.DIALOGUE) setGameMode(GAME_MODE.PLAY);
         chosen.action();
       }
     }

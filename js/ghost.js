@@ -2,7 +2,7 @@
    4. 원혼 AI(BFS 길찾기) · 은신 발각 및 숨 참기 미니게임 · 정신력 환각 모듈
    ========================================================================= */
 import { ROOMS } from "./data.js";
-import { state, TILE, FLICKER_DURATION, GHOST_STATE, setGhostState, autoSaveGame } from "./state.js";
+import { state, TILE, FLICKER_DURATION, GAME_MODE, GHOST_STATE, setGhostState, autoSaveGame } from "./state.js";
 import { playSfx } from "./audio.js";
 
 export function isBlocked(roomName, tx, ty, npcs = []) {
@@ -76,6 +76,8 @@ export function getNextBfsStep(roomName, startX, startY, goalX, goalY, npcs = []
 }
 
 export function startGhostWarning(roomName, gx, gy, warningText, chaseText, callbacks) {
+  if (state.mode === GAME_MODE.ENDED || state.ghost.state !== GHOST_STATE.IDLE) return;
+
   state.lightState = "flicker";
   state.flickerTimer = FLICKER_DURATION;
   state.flickerSfxCooldown = 0;
