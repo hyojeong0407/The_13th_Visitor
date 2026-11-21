@@ -3,17 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>13번째 방문자 (The 13th Visitor) v1.4.2</title>
-  <link rel="stylesheet" href="style.css?v=1.4.2" />
+  <title>13번째 방문자 (The 13th Visitor) v1.5.0</title>
+  <link rel="stylesheet" href="style.css?v=1.5.0" />
 </head>
 <body>
   <div id="title-overlay">
     <div class="title-card">
-      <div class="title-badge">16-BIT KOREAN OCCULT MYSTERY RPG · <span data-app-version>v1.4.2</span></div>
+      <div class="title-badge">16-BIT KOREAN OCCULT MYSTERY RPG · <span data-app-version>v1.5.0</span></div>
       <h1 class="game-title">13번째 방문자</h1>
       <p class="game-subtitle">
         1985년 10월 13일 밤 11시 47분, 준공 도면에 없는 은하아파트 13층에서 사라진 일가족.<br />
-        13년 뒤, 정체불명의 노크 소리가 이어지는 1304호의 진실을 추적하라.
+        13년 뒤, 정체불명의 노크 소리가 이어지는 1304호의 봉인된 기록을 추적하라.
       </p>
       <div class="photosensitivity-notice" role="note">
         ⚠ 광과민성 안내: 본 게임에는 형광등 점멸 및 화면 흔들림 연출이 포함되어 있습니다.
@@ -54,9 +54,10 @@
     <div class="flashback-card">
       <div class="prologue-top">
         <span id="flashback-chapter">MEMORY FLASHBACK</span>
-        <span>TRUTH UNLOCKED</span>
+        <span id="flashback-badge">TRUTH UNLOCKED</span>
       </div>
       <div class="prologue-title" id="flashback-title">기억의 조각</div>
+      <div id="flashback-reveal-banner" class="flashback-reveal-banner" style="display:none;"></div>
       <div class="prologue-body-row">
         <canvas id="flashback-art-canvas" width="160" height="110"></canvas>
         <div id="flashback-text"></div>
@@ -73,7 +74,7 @@
 
       <div class="hud-top-bar">
         <div class="hud-stats">
-          <span class="version-pill" data-app-version>v1.4.2</span>
+          <span class="version-pill" data-app-version>v1.5.0</span>
           <span id="hud-location" class="hud-loc">은하아파트 · 1층 복도</span>
           <div class="mini-meter" title="정신력">
             <span>정신력</span>
@@ -152,6 +153,7 @@
           <button id="btn-combine" class="mini-btn">단서 조합 [C]</button>
         </div>
         <div id="clue-list" class="clue-list">수집한 단서가 없습니다.</div>
+        <div id="clue-detail-box" class="clue-detail-box">단서를 클릭하면 현장 기록과 추리 질문을 확인할 수 있습니다.</div>
         <div class="sub-label">도출된 핵심 진실</div>
         <div id="deduction-list" class="deduction-list">아직 조합으로 밝혀낸 진실이 없습니다.</div>
       </div>
@@ -172,6 +174,6 @@
     </div>
   </aside>
 
-  <script type="module" src="js/main.js?v=1.4.2"></script>
+  <script type="module" src="js/main.js?v=1.5.0"></script>
 </body>
 </html>

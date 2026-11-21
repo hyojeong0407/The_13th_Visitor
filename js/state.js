@@ -1,5 +1,5 @@
 /* =========================================================================
-   3. 게임 모드 상태 머신(FSM), 원혼 상태 머신 & 세이브/로드 관리 (v1.4.2)
+   3. 게임 모드 상태 머신(FSM), 13번째 방문자 상태 머신 & 세이브/로드 관리 (v1.5.0)
    ========================================================================= */
 import { APP_VERSION } from "../version.js";
 import { ROOMS } from "./data.js";
@@ -66,11 +66,13 @@ export const state = {
   collected: [],
   deduced: [],
   selectedClues: [],
+  wrongComboCount: 0,
   pickedFieldItems: [],
   examinedProps: [],
   inventory: { sedative: 1 },
   flags: {},
   activeChoices: [],
+  pendingFlashbackKey: null,
 
   isHiding: false,
   currentHidingId: "",
@@ -139,8 +141,7 @@ export function isDoor1304Unlocked() {
   return Boolean(
     state.flags.door1304Unlocked ||
     state.deduced.includes("combo_space") ||
-    state.deduced.includes("combo_coverup") ||
-    state.flags.metYoonseo
+    state.deduced.includes("combo_coverup")
   );
 }
 
@@ -224,6 +225,7 @@ export function buildSavePayload() {
     stamina: state.stamina,
     collected: state.collected,
     deduced: state.deduced,
+    wrongComboCount: state.wrongComboCount,
     pickedFieldItems: state.pickedFieldItems,
     examinedProps: state.examinedProps,
     inventory: state.inventory,
@@ -269,6 +271,7 @@ export function applyLoadedData(data, findNearestWalkableFn, snapCameraFn) {
   state.stamina = typeof data.stamina === "number" ? Math.max(0, Math.min(100, data.stamina)) : 100;
   state.collected = Array.isArray(data.collected) ? data.collected : [];
   state.deduced = Array.isArray(data.deduced) ? data.deduced : [];
+  state.wrongComboCount = typeof data.wrongComboCount === "number" ? Math.max(0, data.wrongComboCount) : 0;
   state.pickedFieldItems = Array.isArray(data.pickedFieldItems) ? data.pickedFieldItems : [];
   state.examinedProps = Array.isArray(data.examinedProps) ? data.examinedProps : [];
   state.inventory = data.inventory && typeof data.inventory === "object"
@@ -279,6 +282,7 @@ export function applyLoadedData(data, findNearestWalkableFn, snapCameraFn) {
 
   state.selectedClues = [];
   state.activeChoices = [];
+  state.pendingFlashbackKey = null;
   clearHeldInputs();
   state.isHiding = false;
   state.currentHidingId = "";
@@ -317,11 +321,13 @@ export function resetStateFields(snapCameraFn) {
   state.collected = [];
   state.deduced = [];
   state.selectedClues = [];
+  state.wrongComboCount = 0;
   state.pickedFieldItems = [];
   state.examinedProps = [];
   state.inventory = { sedative: 1 };
   state.flags = {};
   state.activeChoices = [];
+  state.pendingFlashbackKey = null;
   clearHeldInputs();
   state.isHiding = false;
   state.currentHidingId = "";

@@ -1,5 +1,5 @@
 /* =========================================================================
-   6. UI · 대화창 포트레이트 · dirty-flag HUD 캐시 · Tab 수첩 메뉴 모듈 (v1.4.2)
+   6. UI · 대화창 포트레이트 · dirty-flag HUD 캐시 · Tab 수첩 메뉴 모듈 (v1.5.0)
    ========================================================================= */
 import { CLUES, COMBINATIONS, PROPS, TUTORIAL_STEPS } from "./data.js";
 import { UI_CONFIG } from "./config.js";
@@ -19,6 +19,7 @@ const hudCache = {
   progress: null,
   endings: null,
   props: null,
+  allPropsDone: null,
   sedative: null,
   reducedMotion: null
 };
@@ -54,19 +55,19 @@ export function formatHighlightedDialogue(rawText) {
   const rules = [
     {
       cls: "hl-gold",
-      regex: /(1985년 10월 13일|1998년 10월 13일|1999년 10월 13일|11시 47분|23:47|1304호|1303호|1302호|1204호|13층|열세 번째|13번째 방문자|방문자 명부|준공 도면|근무일지|녹음기|가족사진|병원 기록|아이의 일기|찢어진 편지|관리비 고지서|추리 질문|핵심 해석|돋보기 아이콘)/g
+      regex: /(1985년 10월 13일|1998년 10월 13일|1999년 10월 13일|11시 47분|23:47|1304호|1303호|1302호|1204호|13층|열세 번째|13번째 방문자|방문자 명부|준공 도면|근무일지|녹음기|가족사진|병원 기록|아이의 일기|찢어진 편지|관리비 고지서|추리 질문|추가 추리 질문|핵심 해석|돋보기 아이콘)/g
     },
     {
       cls: "hl-blue",
-      regex: /(강현우|윤서|박만식|한미정|벽장 뒤|숨겨진 방|낡은 거울|거울|\[H\]|\[E\]|\[C\]|\[M\]|\[Q\]|\[Tab\]|\[Space\])/g
+      regex: /(강현우|강 순경|윤서|박만식|한미정|벽장 뒤|숨겨진 방|낡은 거울|거울|이름 복원|\[H\]|\[E\]|\[C\]|\[M\]|\[Q\]|\[Tab\]|\[Space\])/g
     },
     {
       cls: "hl-red",
-      regex: /(형광등이 격렬하게 깜빡|형광등이 불규칙하게 점멸|형광등이 심하게 깜빡|형광등이 깜빡이면|형광등이 깜빡거리면|문을 열지 마|정전|원혼|노크 소리|몸을 숨길 곳이 없다|실종|피로 쓴|GAME OVER|BAD END)/g
+      regex: /(형광등이 격렬하게 깜빡|형광등이 불규칙하게 점멸|형광등이 심하게 깜빡|형광등이 깜빡이면|형광등이 깜빡거리면|문을 열지 마|정전|노크 소리|몸을 숨길 곳이 없다|실종|피로 쓴|GAME OVER|BAD END)/g
     },
     {
       cls: "hl-mint",
-      regex: /(은신|숨기|캐비닛|대형 장롱|장롱|콘크리트 기둥|기둥|신경안정제|TRUE END|숨을 참)/g
+      regex: /(은신|숨기|캐비닛|대형 장롱|장롱|콘크리트 기둥|기둥|신경안정제|TRUE END|숨을 참|정신 내성)/g
     }
   ];
 
@@ -101,7 +102,7 @@ export function renderSpeakerPortrait(speakerName) {
   else if (name.includes("박만식")) { kind = "park"; roleLabel = "경비원"; }
   else if (name.includes("한미정")) { kind = "han"; roleLabel = "1204호 주민"; }
   else if (name.includes("윤서")) { kind = "yoonseo"; roleLabel = "13층의 소녀"; }
-  else if (name.includes("방문자") || name.includes("원혼") || name.includes("BAD END") || name.includes("GAME OVER")) {
+  else if (name.includes("방문자") || name.includes("BAD END") || name.includes("GAME OVER")) {
     kind = "ghost"; roleLabel = "13번째 방문자";
   } else if (name.includes("단서") || name.includes("수첩") || name.includes("진실") || name.includes("TRUE END")) {
     kind = "clue"; roleLabel = "수사 기록";
@@ -243,7 +244,10 @@ export function updateHUD(force = false) {
   const progStr = `단서 ${state.collected.length}/${CLUES.length} · 진실 ${state.deduced.length}/${COMBINATIONS.length}`;
   const unlocked = getUnlockedEndings();
   const endStr = `달성 엔딩: ${unlocked.length}/3` + (unlocked.length ? ` (${unlocked.join(", ")})` : "");
-  const propStr = `환경 조사: ${state.examinedProps.length}/${PROPS.length}`;
+  const allPropsDone = Boolean(state.flags.allPropsExamined || state.examinedProps.length >= PROPS.length);
+  const propStr = allPropsDone
+    ? `환경 조사: ${PROPS.length}/${PROPS.length} ★`
+    : `환경 조사: ${state.examinedProps.length}/${PROPS.length}`;
   const sedCount = state.inventory.sedative || 0;
   const reduced = Boolean(state.prefs.reducedMotion);
 
@@ -256,6 +260,7 @@ export function updateHUD(force = false) {
       hudCache.progress === progStr &&
       hudCache.endings === endStr &&
       hudCache.props === propStr &&
+      hudCache.allPropsDone === allPropsDone &&
       hudCache.sedative === sedCount &&
       hudCache.reducedMotion === reduced) {
     return;
@@ -313,10 +318,14 @@ export function updateHUD(force = false) {
     if (endEl) endEl.textContent = endStr;
   }
 
-  if (hudCache.props !== propStr) {
+  if (hudCache.props !== propStr || hudCache.allPropsDone !== allPropsDone) {
     hudCache.props = propStr;
+    hudCache.allPropsDone = allPropsDone;
     const propEl = getHudRef("prop-tracker");
-    if (propEl) propEl.textContent = propStr;
+    if (propEl) {
+      propEl.textContent = propStr;
+      propEl.classList.toggle("complete", allPropsDone);
+    }
   }
 
   if (hudCache.sedative !== sedCount) {
@@ -342,6 +351,9 @@ export function renderInventoryUI(onUseConsumable) {
   const bag = getHudRef("item-bag");
   if (!bag) return;
   const sedCount = state.inventory.sedative || 0;
+  const propBonusText = state.flags.allPropsExamined
+    ? " · [현장 정밀 조사 8/8 완료: 정신 내성 25% 적용 중]"
+    : "";
   bag.innerHTML = `
     <div class="bag-row">
       <div class="bag-info">
@@ -353,7 +365,7 @@ export function renderInventoryUI(onUseConsumable) {
     <div class="bag-row">
       <div class="bag-info">
         <span class="bag-name">수사관 현장 수칙</span>
-        <span class="bag-desc">가구에 접근해 돋보기가 뜨면 [E]로 조사. 점멸 시 [H]로 숨고 [Space]로 숨을 참으세요.</span>
+        <span class="bag-desc">단서 조합으로 도출한 [진실]이 잠긴 문과 증언을 엽니다.${propBonusText}</span>
       </div>
     </div>
   `;
@@ -367,6 +379,11 @@ export function isClueInterpreted(clue) {
   return clue.truthIds.some(tid => state.deduced.includes(tid));
 }
 
+export function hasRemainingTruths(clue) {
+  if (!clue || !Array.isArray(clue.truthIds)) return false;
+  return clue.truthIds.some(tid => !state.deduced.includes(tid));
+}
+
 export function getClueDisplayDescription(clue) {
   if (!clue) return "";
   if (clue.id === "car_memo" && state.deduced.includes("combo_past")) {
@@ -375,8 +392,22 @@ export function getClueDisplayDescription(clue) {
   return clue.description;
 }
 
+export function formatClueInspectionText(clue) {
+  if (!clue) return "";
+  const desc = getClueDisplayDescription(clue);
+  if (!isClueInterpreted(clue)) {
+    return `[${clue.name}]\n${desc}\n\n• [[mint:추리 질문]]: ${clue.comboHint}`;
+  }
+  const extraQuestion = hasRemainingTruths(clue)
+    ? `\n• [[mint:추가 추리 질문]]: ${clue.comboHint}`
+    : "";
+  return `[${clue.name}]\n${desc}\n\n• [[gold:핵심 해석]]: ${clue.importance}${extraQuestion}`;
+}
+
 export function renderClueUI(onToggleClue) {
   const list = getHudRef("clue-list");
+  const detailBox = getHudRef("clue-detail-box");
+
   if (list) {
     if (state.collected.length === 0) {
       list.textContent = "수집한 단서가 없습니다.";
@@ -387,12 +418,26 @@ export function renderClueUI(onToggleClue) {
         if (!c) return;
         const interpreted = isClueInterpreted(c);
         const chip = document.createElement("div");
-        chip.className = "clue-chip" + (state.selectedClues.includes(id) ? " selected" : "");
+        chip.className = "clue-chip"
+          + (interpreted ? " interpreted" : "")
+          + (state.selectedClues.includes(id) ? " selected" : "");
         chip.textContent = interpreted ? `✔ ${c.name}` : c.name;
-        chip.title = interpreted ? `[해석 완료] ${c.importance}` : `[추리 질문] ${c.comboHint}`;
+        chip.title = interpreted ? `[핵심 해석] ${c.importance}` : `[추리 질문] ${c.comboHint}`;
         chip.addEventListener("click", () => onToggleClue(id));
         list.appendChild(chip);
       });
+    }
+  }
+
+  if (detailBox) {
+    const focusId = state.selectedClues[state.selectedClues.length - 1];
+    const focusClue = focusId ? CLUES.find(item => item.id === focusId) : null;
+    if (focusClue) {
+      detailBox.innerHTML = formatHighlightedDialogue(formatClueInspectionText(focusClue));
+    } else if (state.collected.length === 0) {
+      detailBox.textContent = "현장에서 단서를 수집한 뒤 클릭하면 상세 기록과 추리 질문을 볼 수 있습니다.";
+    } else {
+      detailBox.textContent = "단서를 클릭해 추리 질문을 확인하고, 연관된 단서 2개를 선택한 뒤 [단서 조합]을 누르세요.";
     }
   }
 
@@ -456,11 +501,25 @@ export function drawSceneArt(canvasId, artType) {
     [12, 20, 28].forEach(r => { g.beginPath(); g.arc(80, 56, r, 0, Math.PI * 2); g.stroke(); });
   } else if (artType === "memory_rescue") {
     g.fillStyle = "#1c1824"; g.fillRect(0, 0, W, H);
-    g.fillStyle = "#9ce0b8"; g.fillRect(66, 12, 28, 8);
-    g.fillStyle = "#2b4263"; g.fillRect(68, 56, 24, 32);
-    g.fillStyle = "#f2cbb0"; g.fillRect(71, 36, 18, 18);
-    g.fillStyle = "#F2D28B"; g.font = "bold 10px monospace"; g.textAlign = "center";
-    g.fillText("1985 · 강현우", 80, 102);
+    g.fillStyle = "#9ce0b8"; g.fillRect(66, 8, 28, 7);
+    g.fillStyle = "#2b4263"; g.fillRect(68, 42, 24, 24);
+    g.fillStyle = "#f2cbb0"; g.fillRect(72, 24, 16, 16);
+
+    // 훼손된 수첩 이름 해금 연출 카드 ([□□□] -> [강현우])
+    g.fillStyle = "#111624";
+    g.fillRect(18, 70, 124, 32);
+    g.strokeStyle = "#8FC9FF";
+    g.lineWidth = 1.5;
+    g.strokeRect(18, 70, 124, 32);
+
+    g.font = "bold 9px monospace";
+    g.textAlign = "center";
+    g.fillStyle = "#9aa3bd";
+    g.fillText("1985 생존 소년 [□□□]", 80, 82);
+    g.fillStyle = "#8FC9FF";
+    g.font = "bold 11px monospace";
+    g.fillText("▶ 강 현 우 (15세)", 80, 96);
+    g.textAlign = "left";
   } else if (artType === "memory_yoonseo") {
     g.fillStyle = "#1a1726"; g.fillRect(0, 0, W, H);
     g.strokeStyle = "#8FC9FF"; g.strokeRect(46, 18, 68, 74);
@@ -469,6 +528,7 @@ export function drawSceneArt(canvasId, artType) {
     g.fillStyle = "#14131a"; g.fillRect(68, 29, 24, 9);
     g.fillStyle = "#8FC9FF"; g.font = "bold 10px monospace"; g.textAlign = "center";
     g.fillText("1304호 · 윤서", 80, 102);
+    g.textAlign = "left";
   } else {
     g.fillStyle = "#161b29"; g.fillRect(0, 0, W, H);
     g.fillStyle = "#2b4263"; g.fillRect(62, 52, 36, 46);
@@ -477,6 +537,7 @@ export function drawSceneArt(canvasId, artType) {
     g.fillStyle = "#161821"; g.fillRect(65, 16, 30, 12);
     g.fillStyle = "#F2D28B"; g.font = "bold 11px monospace"; g.textAlign = "center";
     g.fillText("23:47", 130, 26);
+    g.textAlign = "left";
   }
 }
 

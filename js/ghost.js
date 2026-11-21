@@ -1,5 +1,5 @@
 /* =========================================================================
-   4. 원혼 AI(정수 인덱스 BFS) · 은신 발각 및 숨 참기 미니게임 · 정신력 환각 모듈 (v1.4.2)
+   4. 13번째 방문자 AI(정수 인덱스 BFS) · 은신 발각 및 숨 참기 · 정신력 환각 모듈 (v1.5.0)
    ========================================================================= */
 import { ROOMS } from "./data.js";
 import {
@@ -191,7 +191,7 @@ export function updateHallucinations(dt, callbacks) {
       const fy = 2 + Math.floor(Math.random() * (r.rows - 4));
       state.hallucination.fakeClue = { x: fx, y: fy, ttl: 5.5 };
       if (Math.random() < 0.45 && callbacks.addLog) {
-        callbacks.addLog("환청: 문틈 너머에서 누군가 이름을 부르는 소리가 들린다...");
+        callbacks.addLog("환청: 문틈 너머에서 13번째 방문자가 낮게 이름을 부르는 소리가 들린다...");
       }
     }
   }
@@ -231,7 +231,7 @@ export function updateLightingAndGhost(dt, npcs, callbacks) {
         setGhostState(GHOST_STATE.SEARCH);
         beginBreathHoldMinigame(state.currentHidingId);
 
-        callbacks.addLog("형광등이 꺼졌다! 추격자가 은신처 주변을 수색한다 — [Space]로 숨을 참아라!");
+        callbacks.addLog("형광등이 꺼졌다! 13번째 방문자가 은신처 주변을 수색한다 — [Space]로 숨을 참아라!");
         callbacks.say("SYSTEM", "조명이 꺼지고 13번째 방문자가 코앞까지 다가왔다! [[blue:[Space]]] 키를 연타해 숨을 참아라!", "c-ghost");
       } else {
         callbacks.addLog(state.ghost.chaseText);
@@ -284,7 +284,7 @@ export function updateLightingAndGhost(dt, npcs, callbacks) {
 
       if (state.breathHold.timer >= state.breathHold.duration) {
         state.breathHold.active = false;
-        callbacks.addLog("완벽하게 숨을 죽여 추격자의 의심을 피했다.");
+        callbacks.addLog("완벽하게 숨을 죽여 13번째 방문자의 의심을 피했다.");
       }
     }
 
@@ -330,7 +330,8 @@ export function updateLightingAndGhost(dt, npcs, callbacks) {
   }
 
   if (directDist < TILE * GHOST_CONFIG.PROXIMITY_SANITY_DIST_TILES) {
-    callbacks.changeSanity(-GHOST_CONFIG.PROXIMITY_SANITY_DRAIN * dt, "", true);
+    const drainMult = state.flags.allPropsExamined ? SANITY_CONFIG.ALL_PROPS_DRAIN_MULTIPLIER : 1.0;
+    callbacks.changeSanity(-GHOST_CONFIG.PROXIMITY_SANITY_DRAIN * drainMult * dt, "", true);
     if (state.mode === GAME_MODE.ENDED) return;
   }
 

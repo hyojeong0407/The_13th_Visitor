@@ -1,5 +1,5 @@
 /* =========================================================================
-   0-1. 게임 상수 및 밸런스 설정 모듈 (v1.4.2)
+   0-1. 게임 상수 및 밸런스 설정 모듈 (Phase 3 - v1.5.0)
    ========================================================================= */
 export const TILE = 40;
 export const FLICKER_DURATION = 10.0;
@@ -13,7 +13,7 @@ export const PLAYER_CONFIG = Object.freeze({
 });
 
 export const GHOST_CONFIG = Object.freeze({
-  BASE_SPEED_TILES: 4.95,   // 걷기(4.125) < 원혼(4.95~5.30) < 질주(6.75)
+  BASE_SPEED_TILES: 4.95,   // 걷기(4.125) < 13번째 방문자(4.95~5.30) < 전력 질주(6.75)
   LOW_SANITY_BONUS_TILES: 0.35,
   ENTRY_DELAY: 0.85,
   HIDE_MIN_DIST_TILES: 2.3,
@@ -44,8 +44,12 @@ export const SANITY_CONFIG = Object.freeze({
   DARK_DRAIN_PER_SEC: 1.1,
   ESCAPE_REWARD: 4,
   HIDE_SUCCESS_REWARD: 4,
-  WRONG_COMBO_PENALTY: -5,
+  WRONG_COMBO_BASE_PENALTY: -8,
+  WRONG_COMBO_STEP_PENALTY: -3,
+  WRONG_COMBO_MAX_PENALTY: -20,
+  WRONG_COMBO_FLICKER_REDUCE: 3.0,
   ALL_PROPS_REWARD: 10,
+  ALL_PROPS_DRAIN_MULTIPLIER: 0.75,
   LOW_VISION_THRESHOLD: 60,
   HALLUCINATION_THRESHOLD: 40,
   MINIMAP_DISTORT_THRESHOLD: 20

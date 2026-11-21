@@ -157,6 +157,10 @@ button:disabled {
   font-size: 12px;
 }
 
+.ending-gallery-item:last-child {
+  border-bottom: none;
+}
+
 .ending-unlocked { color: #F2D28B; font-weight: 700; }
 .ending-locked { color: #8890a8; }
 .title-controls-help { font-size: 11px; color: #9aa2bd; }
@@ -460,8 +464,8 @@ button:disabled {
 .notebook-drawer {
   position: fixed;
   top: 0;
-  right: -420px;
-  width: 400px;
+  right: -430px;
+  width: 410px;
   max-width: 92vw;
   height: 100vh;
   z-index: 5000;
@@ -556,11 +560,27 @@ button:disabled {
   cursor: pointer;
 }
 
+.clue-chip.interpreted {
+  border-color: #6e6344;
+  color: #e8dbb5;
+}
+
 .clue-chip.selected {
   background: #38301b;
   border-color: #F2D28B;
   color: #F2D28B;
   font-weight: 700;
+}
+
+.clue-detail-box {
+  background: #0c0f19;
+  border: 1px solid #2b324a;
+  border-radius: 4px;
+  padding: 7px 9px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: #cbd2e6;
+  margin-bottom: 9px;
 }
 
 .sub-label {
@@ -599,8 +619,8 @@ button:disabled {
   font-size: 12px;
 }
 
-.bag-name { font-weight: 700; color: #e6e9f5; }
-.bag-desc { font-size: 11px; color: #9ba3bd; }
+.bag-name { display: block; font-weight: 700; color: #e6e9f5; }
+.bag-desc { display: block; font-size: 11px; color: #9ba3bd; }
 
 .bag-row button {
   background: #23304a;
@@ -619,6 +639,11 @@ button:disabled {
   color: #c8cee0;
   display: flex;
   justify-content: space-between;
+}
+
+.meta-box .complete {
+  color: #9ce0b8;
+  font-weight: 700;
 }
 
 .event-log {
@@ -667,7 +692,20 @@ button:disabled {
   font-size: 18px;
   font-weight: 700;
   color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.flashback-reveal-banner {
+  background: rgba(143, 201, 255, 0.1);
+  border: 1px solid #8FC9FF;
+  color: #8FC9FF;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
   margin-bottom: 12px;
+  text-align: center;
+  letter-spacing: 0.5px;
 }
 
 .prologue-body-row {

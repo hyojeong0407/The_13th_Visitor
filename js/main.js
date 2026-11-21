@@ -1,5 +1,6 @@
 /* =========================================================================
-   7. 메인 진입점 (게임 루프, 추격 밸런스, 상호작용, 단계별 자백, 이벤트 바인딩) (v1.4.2)
+   7. 메인 진입점 (게임 루프, 서사 반전 보호, 진실 게이트, 추리 루프, 이벤트 바인딩)
+   Phase 3 (v1.5.0)
    ========================================================================= */
 import { APP_VERSION } from "../version.js";
 import {
@@ -25,8 +26,8 @@ import {
 import { updateVisualTimers, renderGame } from "./render.js";
 import {
   formatHighlightedDialogue, say, addLog, toggleNotebookDrawer,
-  updateHUD, renderInventoryUI, isClueInterpreted,
-  getClueDisplayDescription, renderClueUI, drawSceneArt, renderTutorialBanner
+  updateHUD, renderInventoryUI, formatClueInspectionText,
+  renderClueUI, drawSceneArt, renderTutorialBanner
 } from "./ui.js";
 
 const canvas = document.getElementById("screen");
@@ -63,11 +64,11 @@ function getTargetCamera() {
   const mapW = r.cols * TILE;
   const mapH = r.rows * TILE;
 
-  let tx = mapW <= canvas.width
+  const tx = mapW <= canvas.width
     ? -(canvas.width - mapW) / 2
     : Math.max(0, Math.min(mapW - canvas.width, (state.player.px + TILE / 2) - canvas.width / 2));
 
-  let ty = mapH <= canvas.height
+  const ty = mapH <= canvas.height
     ? -(canvas.height - mapH) / 2
     : Math.max(0, Math.min(mapH - canvas.height, (state.player.py + TILE / 2) - canvas.height / 2));
 
@@ -161,9 +162,25 @@ function finishPrologue() {
 function triggerMemoryFlashback(key) {
   const scene = FLASHBACK_SCENES[key];
   if (!scene) return;
+  state.pendingFlashbackKey = key;
   setGameMode(GAME_MODE.FLASHBACK);
   playSfx("flashback");
+  if (key === "past") playSfx("heartbeat");
+
   document.getElementById("flashback-chapter").textContent = scene.chapter;
+  const badgeEl = document.getElementById("flashback-badge");
+  if (badgeEl) badgeEl.textContent = scene.badge || "TRUTH UNLOCKED";
+
+  const bannerEl = document.getElementById("flashback-reveal-banner");
+  if (bannerEl) {
+    if (scene.revealBanner) {
+      bannerEl.innerHTML = formatHighlightedDialogue(scene.revealBanner);
+      bannerEl.style.display = "block";
+    } else {
+      bannerEl.style.display = "none";
+    }
+  }
+
   document.getElementById("flashback-title").textContent = scene.title;
   document.getElementById("flashback-text").innerHTML = formatHighlightedDialogue(scene.text);
   drawSceneArt("flashback-art-canvas", scene.art);
@@ -172,10 +189,27 @@ function triggerMemoryFlashback(key) {
 }
 
 function closeMemoryFlashback() {
+  const closedKey = state.pendingFlashbackKey;
+  state.pendingFlashbackKey = null;
   const fb = document.getElementById("flashback-overlay");
   if (fb) fb.style.display = "none";
   setGameMode(GAME_MODE.PLAY);
   playSfx("clue");
+
+  if (closedKey === "past") {
+    addLog("이름 복원 완료: 수사 메모의 [□□□]가 [강현우]로 해금되었다.");
+    say(
+      "강현우",
+      "......기억났어. 수사 메모의 번진 잉크 속에 가려졌던 이름 [[blue:강현우]], 그게 바로 나였어. 13년 전 그날 밤, 아버지 강 순경과 함께 13층에 올라갔던 15세 소년이 나였어...!",
+      "c-hero"
+    );
+  } else if (closedKey === "yoonseo") {
+    say(
+      "강현우",
+      "윤서는 우리를 해치려는 악령이 아니었어... 광기에 빠진 13번째 방문자를 피해 벽장 뒤에서 구조를 기다리다 멈춘 시간에 갇힌 소녀였어.",
+      "c-hero"
+    );
+  }
 }
 
 function changeSanity(delta, reason = "", silent = false, gameOverTitle = "정신 붕괴", gameOverReason = "끝없는 환청과 공포에 짓눌린 강현우는 결국 13층의 어둠 속에서 자아를 잃고 말았다.") {
@@ -223,17 +257,67 @@ function toggleSelectClue(id) {
     if (state.selectedClues.length >= 2) state.selectedClues.shift();
     state.selectedClues.push(id);
     if (c) {
-      const desc = getClueDisplayDescription(c);
-      const extraLine = isClueInterpreted(c)
-        ? `• [[gold:핵심 해석]]: ${c.importance}`
-        : `• [[mint:추리 질문]]: ${c.comboHint}`;
-      say("수사 수첩", `[${c.name}]
-${desc}
-
-${extraLine}`, "c-clue");
+      say("수사 수첩", formatClueInspectionText(c), "c-clue");
     }
   }
   renderClueUI(toggleSelectClue);
+}
+
+function applyWrongCombinationPenalty() {
+  state.wrongComboCount = (state.wrongComboCount || 0) + 1;
+  const rawPenalty = SANITY_CONFIG.WRONG_COMBO_BASE_PENALTY +
+    (state.wrongComboCount - 1) * SANITY_CONFIG.WRONG_COMBO_STEP_PENALTY;
+  const penalty = Math.max(SANITY_CONFIG.WRONG_COMBO_MAX_PENALTY, rawPenalty);
+
+  playSfx("bump");
+  playSfx("heartbeat");
+  changeSanity(penalty, `오답 추리 조합 누적 ${state.wrongComboCount}회`);
+  if (state.mode === GAME_MODE.ENDED) return;
+
+  if (state.lightState === "flicker" && state.ghost.state === GHOST_STATE.WARNING) {
+    state.flickerTimer = Math.max(0.5, state.flickerTimer - SANITY_CONFIG.WRONG_COMBO_FLICKER_REDUCE);
+    addLog("추리 혼란으로 정신이 흔들리며 점멸 유예 시간이 급격히 줄어들었다!");
+    say(
+      "강현우",
+      `머리가 깨질 듯이 울린다... 잘못된 가설에 매달리는 사이 천장 형광등이 더 빠르게 꺼져 간다! (정신력 ${penalty})`,
+      "c-ghost"
+    );
+    return;
+  }
+
+  const r = ROOMS[state.currentRoom];
+  const canHauntHere = Boolean(
+    state.ghost.state === GHOST_STATE.IDLE &&
+    state.wrongComboCount >= 2 &&
+    r &&
+    r.hidingSpots &&
+    r.hidingSpots.length > 0
+  );
+
+  if (canHauntHere) {
+    if (state.notebookOpen) toggleNotebookDrawer(false);
+    const spawnPos = findNearestWalkable(state.currentRoom, r.cols - 3, Math.floor(r.rows / 2), NPCS);
+    addLog(`반복된 오답 추리(${state.wrongComboCount}회)의 불안에 13번째 방문자가 반응했다!`);
+    startGhostWarning(
+      state.currentRoom,
+      spawnPos.x,
+      spawnPos.y,
+      `억지 추리로 흐트러진 정신 틈을 타 주변 형광등이 격렬하게 깜빡이기 시작한다! (정신력 ${penalty}) 서둘러 은신처를 찾거나 구역을 벗어나라 [H]!`,
+      "형광등이 터지며 암전이 찾아왔다! 흐트러진 정신을 노리고 13번째 방문자가 덮쳐온다!",
+      { addLog, say, onTutorial4: () => startTutorialStep(4) }
+    );
+    return;
+  }
+
+  const warningHint = state.wrongComboCount === 1
+    ? "다음부터 억지 추리를 반복하면 극심한 정신 소모와 함께 13번째 방문자를 자극할 수 있다."
+    : "흐트러진 정신력이 13층의 원념을 끌어당기고 있다!";
+  say(
+    "강현우",
+    `억지로 끼워 맞춘 가설이야... 각 단서의 [[mint:추리 질문]]을 다시 대조해 보자. (정신력 ${penalty})
+${warningHint}`,
+    "c-hero"
+  );
 }
 
 function combineSelectedClues() {
@@ -256,11 +340,7 @@ function combineSelectedClues() {
   }
 
   if (!match) {
-    playSfx("bump");
-    changeSanity(SANITY_CONFIG.WRONG_COMBO_PENALTY, "잘못된 추리 조합으로 인한 혼란");
-    if (state.mode !== GAME_MODE.ENDED) {
-      say("강현우", "억지로 끼워 맞춘 가설이야... 머리가 지끈거린다. 각 단서의 [[mint:추리 질문]]을 다시 읽어보자. (정신력 -5)", "c-hero");
-    }
+    applyWrongCombinationPenalty();
     return;
   }
 
@@ -277,10 +357,10 @@ ${match.summary}`, "c-system");
 
   if (match.id === "combo_space" || match.id === "combo_coverup") {
     unlockDoor1304();
-    addLog("13층의 비밀을 파악해 1304호 현관문을 열 수 있게 되었다.");
+    addLog("13층의 진실을 도출해 굳게 잠긴 1304호 현관문을 열 수 있게 되었다.");
   } else if (match.id === "combo_secret") {
     state.flags.secretOpen = true;
-    addLog("증거 조합으로 아이 방 벽장 뒤 비밀 통로를 여는 방법을 알아냈다!");
+    addLog("진실 도출로 아이 방 벽장 뒤 비밀 통로를 여는 방법을 알아냈다!");
   }
 
   addLog(`새로운 진실 도출: ${match.title}`);
@@ -418,11 +498,15 @@ function handleDoorTransition(door) {
       if (!state.flags.door1304Unlocked) {
         unlockDoor1304();
         playSfx("door");
-        addLog("13층의 비밀을 파악하고 굳게 닫혀 있던 1304호 현관문을 열었다.");
+        addLog("도출해낸 13층의 진실을 바탕으로 굳게 잠긴 1304호 현관문을 열었다.");
       }
     } else {
-      say("SYSTEM", "1304호 철문이 굳게 잠겨 있다.
-[Tab] 수사 수첩에서 13층의 존재와 방화문 봉쇄에 관한 단서들을 조합해 진실을 밝혀야 한다.", "c-system");
+      say(
+        "SYSTEM",
+        "1304호 철문이 굳게 잠겨 있다.
+[Tab] 수사 수첩에서 13층의 존재 또는 방화문 봉쇄에 관한 단서들을 조합해 진실을 먼저 도출해야 한다.",
+        "c-system"
+      );
       return;
     }
   }
@@ -431,10 +515,14 @@ function handleDoorTransition(door) {
     if (state.deduced.includes("combo_secret")) {
       state.flags.secretOpen = true;
       playSfx("door");
-      addLog("벽장 뒤의 비밀 통로가 열렸다!");
+      addLog("도출된 진실로 벽장 뒤의 비밀 통로를 열었다!");
     } else {
-      say("SYSTEM", "벽장 뒤에서 차가운 바람이 새어 나오지만 굳게 막혀 있다.
-[Tab] 수사 수첩에서 관련 단서들을 조합해 벽장 뒤의 진실을 먼저 밝혀야 한다.", "c-system");
+      say(
+        "SYSTEM",
+        "벽장 뒤에서 차가운 바람이 새어 나오지만 굳게 막혀 있다.
+[Tab] 수사 수첩에서 관련 단서들을 조합해 벽장 뒤의 진실을 먼저 밝혀야 한다.",
+        "c-system"
+      );
       return;
     }
   }
@@ -565,7 +653,7 @@ function toggleHide() {
   const r = ROOMS[state.currentRoom];
   if (state.isHiding) {
     if (state.ghost.state !== GHOST_STATE.IDLE || state.lightState === "flicker") {
-      say("SYSTEM", "아직 바깥에 추격자의 발소리가 남아 있습니다! 불이 다시 켜질 때까지 숨을 죽이세요.", "c-ghost");
+      say("SYSTEM", "아직 바깥에 13번째 방문자의 발소리가 남아 있습니다! 불이 다시 켜질 때까지 숨을 죽이세요.", "c-ghost");
       return;
     }
     state.isHiding = false;
@@ -621,7 +709,7 @@ function toggleHide() {
     setGhostState(GHOST_STATE.SEARCH);
     state.ghost.patrolTimer = 0;
     beginBreathHoldMinigame(spot.id);
-    say("SYSTEM", `[${spot.label}] 안에 몸을 숨겼지만 추격자가 주변을 수색한다!${repeatWarn} 지금 즉시 [[blue:[Space]]]를 연타해 숨을 참으세요!`, "c-ghost");
+    say("SYSTEM", `[${spot.label}] 안에 몸을 숨겼지만 13번째 방문자가 주변을 수색한다!${repeatWarn} 지금 즉시 [[blue:[Space]]]를 연타해 숨을 참으세요!`, "c-ghost");
   } else {
     say("SYSTEM", `[${spot.label}] 안에 몸을 숨겼다.${repeatWarn} 불이 꺼지고 추격자가 다가오면 [[blue:[Space]]]를 눌러 숨을 참으세요.`, "c-system");
   }
@@ -652,7 +740,7 @@ function checkStepEvents() {
     state.flags.hallGhostSeen = true;
     startGhostWarning(
       "13층 복도", 22, 4,
-      "13층 복도의 형광등이 불규칙하게 점멸하며 스파크가 튄다! 서둘러 은신처를 찾거나 문을 통해 구역을 벗어나라 [H]!",
+      "13층 복도의 형광등이 불규칙하게 점멸하며 스파크가 튄다! 서둘러 은신처를 찾거나 구역을 벗어나라 [H]!",
       "복도 조명이 완전히 꺼졌다! 암전 속에서 13번째 방문자가 거친 숨소리와 함께 달려온다!",
       ghostCallbacks
     );
@@ -778,13 +866,22 @@ function interact() {
       startTutorialStep(3);
     }
 
+    let extraReaction = "";
+    if (clue.id === "car_memo") {
+      extraReaction = "
+
+(물에 번져 이름이 지워져 있다... '강 순경의 아들 □□□'... 이상하게 가슴이 조여 온다.)";
+    } else if (clue.id === "ledger") {
+      extraReaction = "
+
+(방문자 명부 13번째 줄에 내 이름이 적혀 있다... 내가 이곳에 발을 들이기도 전에 어떻게 기록된 거지?)";
+    }
+
     say(
       "중요 단서",
       `[${clue.name}]을(를) 발견했다!
 
-${getClueDisplayDescription(clue)}
-
-• [[mint:추리 질문]]: ${clue.comboHint}`,
+${formatClueInspectionText(clue)}${extraReaction}`,
       "c-clue"
     );
 
@@ -820,8 +917,19 @@ ${fItem.desc}`, "c-system");
       if (prop.sanityDelta) changeSanity(prop.sanityDelta, prop.sanityReason);
       if (state.examinedProps.length >= PROPS.length && !state.flags.allPropsExamined) {
         state.flags.allPropsExamined = true;
-        changeSanity(SANITY_CONFIG.ALL_PROPS_REWARD, "아파트 전체 현장 정밀 조사 완료");
-        addLog(`모든 환경 단서(${PROPS.length}/${PROPS.length})를 조사해 사건의 전체 맥락을 꿰뚫었다!`);
+        changeSanity(SANITY_CONFIG.ALL_PROPS_REWARD, "아파트 전체 현장 정밀 조사 완료 (8/8)");
+        addLog(`모든 환경 단서(${PROPS.length}/${PROPS.length})를 조사해 [정신 내성]을 획득했다!`);
+        renderInventoryUI(useConsumable);
+        markHudDirty();
+        say(
+          "강현우",
+          `[${prop.name}]
+${prop.text}
+
+• [[mint:현장 정밀 조사 완료 (8/8)]]: 아파트 전역의 잔류 흔적을 모두 파악했다. 공포에 흔들리지 않는 [[mint:정신 내성]](정신력 소모 25% 완화)을 얻었으며, 거울의 진실을 마주할 준비가 되었다!`,
+          "c-hero"
+        );
+        return;
       }
     }
     playSfx("step");
@@ -879,16 +987,16 @@ function talkToNPC(npc) {
 
     if ((state.collected.includes("blueprint") || state.collected.includes("guard_log")) && !state.deduced.includes("combo_coverup")) {
       choices.push({
-        label: "[증거 제시] 경비실의 서류 한 장을 내밀며 추궁한다",
+        label: "[단서 제시] 경비실의 서류 한 장을 내밀며 추궁한다",
         action: () => {
-          say("박만식 (경비원)", "서류 한 장 가지고 뭘 어쩌겠다는 거요? 오래된 착오일 뿐이오! 13층 방화문 같은 건 기록에도 없소!", "c-npc");
+          say("박만식 (경비원)", "서류 한 장 가지고 뭘 어쩌겠다는 거요? 오래된 착오일 뿐이오! 13층 방화문 같은 건 기록에도 없소! ([Tab] 수사 수첩에서 모순되는 두 기록을 먼저 조합해 진실을 도출하자)", "c-npc");
         }
       });
     }
 
     if (state.deduced.includes("combo_coverup")) {
       choices.push({
-        label: "[2단계 추궁] 준공 도면과 근무일지를 대조한 [진실 2]를 제시한다",
+        label: "[진실 2 제시] 준공 도면과 근무일지를 대조한 방화문 봉쇄 진실을 추궁한다",
         action: () => {
           state.flags.parkStage2 = true;
           unlockDoor1304();
@@ -901,10 +1009,10 @@ function talkToNPC(npc) {
     if (
       state.flags.parkStage2 &&
       !state.flags.parkConfessed &&
-      (state.deduced.includes("combo_past") || state.collected.includes("ledger"))
+      state.deduced.includes("combo_past")
     ) {
       choices.push({
-        label: "[3단계 완전 자백] 방문자 명부와 강 순경 아들의 진실을 내민다",
+        label: "[진실 5 제시] 복원된 강 순경 아들의 기억과 방문자 명부의 진실을 내민다",
         action: once("parkConfessed", () => {
           changeSanity(10, "박만식의 완전한 참회와 증언");
           addLog("박만식이 강현우와 그의 아버지(강 순경)에 대한 모든 진실을 자백했다.");
@@ -926,13 +1034,13 @@ function talkToNPC(npc) {
       }
     ];
 
-    if (!state.flags.hanTruth && (state.deduced.includes("combo_yoonseo") || state.collected.includes("medical"))) {
+    if (!state.flags.hanTruth && state.deduced.includes("combo_yoonseo")) {
       choices.push({
-        label: "[진실 제시] '윤서'라는 아이에 대해 알고 있는지 묻는다",
+        label: "[진실 4 제시] '윤서'의 진실에 대해 알고 있는지 묻는다",
         action: once("hanTruth", () => {
           changeSanity(6, "한미정의 진심 어린 증언");
           addLog("한미정이 윤서의 옛 피아노 선생이었음을 밝히고 진실을 증언했다.");
-          say("한미정 (주민)", "윤서 이름을 어떻게 아세요...? 저는 13년 전 윤서의 피아노 선생님이었어요. 윤서는 착하고 여린 아이였어요. 그날 밤 윤서를 구하러 갔던 한 소년도 있었는데...", "c-npc");
+          say("한미정 (주민)", "윤서의 진실을 알아내셨군요... 저는 13년 전 윤서의 피아노 선생님이었어요. 윤서는 착하고 여린 아이였어요. 그날 밤 윤서를 구하러 갔던 한 소년도 있었는데...", "c-npc");
         })
       });
     }
@@ -941,33 +1049,43 @@ function talkToNPC(npc) {
   } else if (npc.id === "yoonseo") {
     const choices = [
       {
-        label: "\"너는 누구니? 왜 이 어두운 복도에 혼자 서 있니?\"",
+        label: ""너는 누구니? 왜 이 어두운 복도에 혼자 서 있니?"",
         action: () => {
           state.flags.metYoonseo = true;
-          unlockDoor1304();
-          addLog("13층 복도의 소녀 윤서와 대화해 1304호 문을 열 수 있게 되었다.");
-          say("윤서", "...아저씨도 13번째 방문자인가요? 우리 집 문은 열어 둘게요. 하지만 형광등이 깜빡이면 꼭 숨어야 해요... 망가진 아빠가 오고 있다는 신호니까요.", "c-npc");
+          addLog("13층 복도의 소녀 윤서로부터 1304호 봉인 조건에 대한 단서를 들었다.");
+          say(
+            "윤서",
+            "...아저씨도 13번째 방문자인가요? 1304호 문은 안쪽에서 단단히 잠겨 있어요. 존재하지 않는 13층이 왜 생겨났는지, 누가 밖에서 방화문을 잠갔는지 그 진실을 깨닫기 전엔 열리지 않을 거예요... 그리고 형광등이 깜빡이면 꼭 숨어야 해요. 망가진 아빠가 오고 있다는 신호니까요.",
+            "c-npc"
+          );
         }
       }
     ];
 
-    if (state.deduced.includes("combo_yoonseo") || state.deduced.includes("combo_past")) {
+    if (state.deduced.includes("combo_yoonseo")) {
       if (!state.flags.savedYoonseo) {
         choices.push({
-          label: "\"윤서야, 이제 무서워하지 마. 그날 밤의 진실을 모두 기억해냈어.\"",
+          label: ""윤서야, 이제 무서워하지 마. 네가 악령이 아니라는 진실을 모두 알아냈어."",
           action: once("savedYoonseo", () => {
             unlockDoor1304();
             setGhostState(GHOST_STATE.IDLE);
             state.lightState = "on";
             changeSanity(15, "윤서의 원한 완화");
             addLog("윤서에게 진실을 전하여 그녀의 두려움을 진정시켰다.");
-            say("윤서", "...정말 기억해 주신 거예요? 13년 동안 아무도 제 목소리를 들어주지 않았어요. 숨겨진 방의 거울을 봐주세요... 모든 진실이 거기 있어요.", "c-npc");
+            const extraMemory = state.deduced.includes("combo_past")
+              ? " 그날 밤 너를 구하러 왔던 소년도 바로 나였어."
+              : "";
+            say(
+              "윤서",
+              `...정말 제 진실을 알아봐 주신 거예요?${extraMemory} 13년 동안 아무도 제 목소리를 들어주지 않았어요. 숨겨진 방의 거울을 봐주세요... 모든 진실이 거기 있어요.`,
+              "c-npc"
+            );
           })
         });
       }
     } else if (!state.flags.provokedYoonseo) {
       choices.push({
-        label: "\"원혼이라면 당장 사라져라!\" (적대적으로 경고한다)",
+        label: ""원혼이라면 당장 사라져라!" (적대적으로 경고한다)",
         action: once("provokedYoonseo", () => {
           changeSanity(-18, "13번째 방문자의 분노 촉발");
           if (state.mode === GAME_MODE.ENDED) return;
@@ -986,14 +1104,21 @@ function talkToNPC(npc) {
 }
 
 function triggerFinalMirrorEvent() {
-  const hasEnoughClues = state.collected.length >= 9;
-  const hasTruthCombos = state.deduced.length >= 4 && (state.deduced.includes("combo_yoonseo") || state.deduced.includes("combo_past"));
-  const hasHumanConnection = state.flags.savedYoonseo || (state.flags.parkConfessed && state.flags.hanTruth) || state.flags.allPropsExamined;
+  const hasRequiredTruths =
+    state.deduced.length >= 5 &&
+    state.deduced.includes("combo_yoonseo") &&
+    state.deduced.includes("combo_past") &&
+    state.deduced.includes("combo_trap");
+
+  const hasHumanOrFullSearch =
+    state.flags.savedYoonseo ||
+    (state.flags.parkConfessed && state.flags.hanTruth) ||
+    state.flags.allPropsExamined;
 
   say(
     "SYSTEM",
     `방 한가운데 놓인 낡은 거울 속에 1985년 10월 13일의 방이 비치고 있다.
-현재 확보 단서: ${state.collected.length}/${CLUES.length} · 도출 진실: ${state.deduced.length}/${COMBINATIONS.length}
+도출 진실: ${state.deduced.length}/${COMBINATIONS.length} · 환경 조사: ${state.examinedProps.length}/${PROPS.length}
 
 등 뒤에서 세 번의 노크 소리가 울린다. 똑. 똑. 똑.
 강현우는 마지막 결정을 내려야 한다.`,
@@ -1002,14 +1127,14 @@ function triggerFinalMirrorEvent() {
       {
         label: "[진실 직면] 거울 속 13년 전 그날 밤의 기억과 마주한다",
         action: () => {
-          if (hasEnoughClues && hasTruthCombos && hasHumanConnection) triggerEnding("TRUE");
-          else if (state.collected.length >= 6) triggerEnding("NORMAL");
+          if (hasRequiredTruths && hasHumanOrFullSearch) triggerEnding("TRUE");
+          else if (state.deduced.length >= 2) triggerEnding("NORMAL");
           else triggerEnding("BAD");
         }
       },
       {
-        label: "[사건 봉인] 수집한 기록만 챙겨 1304호의 문을 닫고 떠난다",
-        action: () => triggerEnding(state.collected.length >= 5 ? "NORMAL" : "BAD")
+        label: "[사건 봉인] 도출한 기록만 챙겨 1304호의 문을 닫고 떠난다",
+        action: () => triggerEnding(state.deduced.length >= 2 ? "NORMAL" : "BAD")
       },
       {
         label: "[노크 응답] 문밖에서 들리는 익숙한 목소리를 따라 문을 연다",
@@ -1034,7 +1159,7 @@ function triggerEnding(type) {
       "TRUE END — 마지막 방문자와 사라진 가족의 진실",
       "거울이 산산조각 나며 봉인되어 있던 13년 전의 기억이 완전히 되살아났다.
 
-1985년 10월 13일, 아버지의 광기 속에서 윤서를 구하려다 비상구 앞에 쓰러졌던 소년이 바로 강현우 자신이었다. 윤서는 악령이 아니라, 자신을 기억해 줄 마지막 방문자를 13년 동안 기다려 온 소녀의 영혼이었다.
+1985년 10월 13일, 아버지의 광기 속에서 윤서를 구하려다 비상구 앞에 쓰러졌던 소년이 바로 강현우 자신이었다. 윤서는 악령이 아니라, 자신을 기억해 줄 마지막 방문자를 13년 동안 기다려 온 소녀였다.
 
 강현우가 윤서의 이름을 부르며 진실을 세상에 밝히겠다고 맹세하자, 13층의 붉은 어둠이 걷히고 방문자 명부의 마지막 줄이 사라졌다.",
       "c-clue",
@@ -1048,12 +1173,12 @@ function triggerEnding(type) {
     addLog("엔딩 달성: [NORMAL END - 봉인된 미제 사건]");
     say(
       "NORMAL END — 봉인된 미제 사건",
-      "강현우는 확보한 물증만을 토대로 1304호 일가족 실종 사건의 수사 보고서를 제출했다.
+      "강현우는 밝혀낸 일부 진실만을 토대로 1304호 일가족 실종 사건의 수사 보고서를 제출했다.
 
-사건은 서류상 해결되었지만, 윤서의 진실과 강현우 자신의 잃어버린 기억은 끝내 밝혀지지 않았다. 1년 뒤인 1999년 10월 13일 밤 11시 47분, 현관문 앞에서 다시 세 번의 노크 소리가 들려왔다.",
+사건은 서류상 해결되었지만, 윤서의 진실과 강현우 자신의 잃어버린 기억은 끝내 온전히 밝혀지지 않았다. 1년 뒤인 1999년 10월 13일 밤 11시 47분, 현관문 앞에서 다시 세 번의 노크 소리가 들려왔다.",
       "c-system",
       [
-        { label: "진실을 밝히기 위해 다시 도전하기", action: () => startNewGameWithConfirm(false, false) },
+        { label: "모든 진실을 밝히기 위해 다시 도전하기", action: () => startNewGameWithConfirm(false, false) },
         { label: "타이틀 화면으로 이동", action: returnToTitle }
       ]
     );
@@ -1126,7 +1251,7 @@ function saveGame() {
   }
   if (state.ghost.state !== GHOST_STATE.IDLE) {
     playSfx("bump");
-    say("SYSTEM", "형광등이 점멸하거나 추격자가 쫓아오는 위기 상황 중에는 저장할 수 없습니다!", "c-ghost");
+    say("SYSTEM", "형광등이 점멸하거나 13번째 방문자가 쫓아오는 위기 상황 중에는 저장할 수 없습니다!", "c-ghost");
     return;
   }
   const data = buildSavePayload();
@@ -1194,6 +1319,7 @@ function resetGame(withPrologue = false) {
 function returnToTitle() {
   setGameMode(GAME_MODE.TITLE);
   state.activeChoices = [];
+  state.pendingFlashbackKey = null;
   toggleNotebookDrawer(false);
   const pov = document.getElementById("prologue-overlay");
   if (pov) pov.style.display = "none";
@@ -1213,9 +1339,21 @@ function openEndingGallery() {
   if (box.style.display === "block") { box.style.display = "none"; return; }
   const unlocked = getUnlockedEndings();
   const defs = [
-    { key: "TRUE", title: "TRUE END — 마지막 방문자와 사라진 가족의 진실", hint: "조건: 단서 9개 이상 + 핵심 진실 4개 이상(윤서/과거 기억) + 인물과 진실 공유 후 거울 직면" },
-    { key: "NORMAL", title: "NORMAL END — 봉인된 미제 사건", hint: "조건: 단서 5~6개 이상 확보 후 거울 직면 또는 사건 기록 봉인" },
-    { key: "BAD", title: "BAD END — 13번째 방문자", hint: "조건: 진실이 불충분한 상태에서 노크 소리에 속아 문을 연다" }
+    {
+      key: "TRUE",
+      title: "TRUE END — 마지막 방문자와 사라진 가족의 진실",
+      hint: "조건: 핵심 진실 5개 이상 도출(윤서의 정체·잃어버린 기억·방문자의 법칙 필수) + 인물과 진실 공유 또는 환경 조사 8/8 완료 후 [진실 직면] 선택"
+    },
+    {
+      key: "NORMAL",
+      title: "NORMAL END — 봉인된 미제 사건",
+      hint: "조건: 진실 2개 이상 도출 후 [사건 봉인]을 선택하거나, TRUE 조건 미달 상태로 [진실 직면] 선택"
+    },
+    {
+      key: "BAD",
+      title: "BAD END — 13번째 방문자",
+      hint: "조건: 진실이 불충분한 상태(2개 미만)에서 거울을 마주하거나, 문밖 노크 소리에 속아 [노크 응답] 선택"
+    }
   ];
   box.innerHTML = defs.map(d => {
     const ok = unlocked.includes(d.key);
@@ -1241,8 +1379,9 @@ function gameLoop(now) {
     updateHallucinations(dt, { addLog });
 
     if (state.lightState === "out" && !state.isHiding) {
+      const drainMult = state.flags.allPropsExamined ? SANITY_CONFIG.ALL_PROPS_DRAIN_MULTIPLIER : 1.0;
       changeSanity(
-        -SANITY_CONFIG.DARK_DRAIN_PER_SEC * dt,
+        -SANITY_CONFIG.DARK_DRAIN_PER_SEC * drainMult * dt,
         "",
         true,
         "어둠 속의 공황",
