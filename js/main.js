@@ -314,8 +314,7 @@ function applyWrongCombinationPenalty() {
     : "흐트러진 정신력이 13층의 원념을 끌어당기고 있다!";
   say(
     "강현우",
-    `억지로 끼워 맞춘 가설이야... 각 단서의 [[mint:추리 질문]]을 다시 대조해 보자. (정신력 ${penalty})
-${warningHint}`,
+    `억지로 끼워 맞춘 가설이야... 각 단서의 [[mint:추리 질문]]을 다시 대조해 보자. (정신력 ${penalty})\n${warningHint}`,
     "c-hero"
   );
 }
@@ -345,10 +344,7 @@ function combineSelectedClues() {
   }
 
   if (state.deduced.includes(match.id)) {
-    say("SYSTEM", `이미 도출한 진실입니다.
-
-${match.title}
-${match.summary}`, "c-system");
+    say("SYSTEM", `이미 도출한 진실입니다.\n\n${match.title}\n${match.summary}`, "c-system");
     return;
   }
 
@@ -368,10 +364,7 @@ ${match.summary}`, "c-system");
   autoSaveGame();
 
   if (state.notebookOpen) toggleNotebookDrawer(false);
-  say("진실 해금", `증거 조합 성공! 새로운 진실이 수첩에 기록되었다.
-
-${match.title}
-${match.summary}`, "c-clue");
+  say("진실 해금", `증거 조합 성공! 새로운 진실이 수첩에 기록되었다.\n\n${match.title}\n${match.summary}`, "c-clue");
 
   if (match.flashbackKey === "yoonseo" && !state.flags.flashbackYoonseoSeen) {
     state.flags.flashbackYoonseoSeen = true;
@@ -503,8 +496,7 @@ function handleDoorTransition(door) {
     } else {
       say(
         "SYSTEM",
-        "1304호 철문이 굳게 잠겨 있다.
-[Tab] 수사 수첩에서 13층의 존재 또는 방화문 봉쇄에 관한 단서들을 조합해 진실을 먼저 도출해야 한다.",
+        "1304호 철문이 굳게 잠겨 있다.\n[Tab] 수사 수첩에서 13층의 존재 또는 방화문 봉쇄에 관한 단서들을 조합해 진실을 먼저 도출해야 한다.",
         "c-system"
       );
       return;
@@ -519,8 +511,7 @@ function handleDoorTransition(door) {
     } else {
       say(
         "SYSTEM",
-        "벽장 뒤에서 차가운 바람이 새어 나오지만 굳게 막혀 있다.
-[Tab] 수사 수첩에서 관련 단서들을 조합해 벽장 뒤의 진실을 먼저 밝혀야 한다.",
+        "벽장 뒤에서 차가운 바람이 새어 나오지만 굳게 막혀 있다.\n[Tab] 수사 수첩에서 관련 단서들을 조합해 벽장 뒤의 진실을 먼저 밝혀야 한다.",
         "c-system"
       );
       return;
@@ -601,8 +592,7 @@ function handleDoorTransition(door) {
 function openElevatorMenu() {
   say(
     "SYSTEM",
-    `엘리베이터 내부다. 현재 층: [${state.elevatorFloor}]
-조작반 맨 아래에는 도면에 없는 붉은색 [13층] 버튼이 희미하게 빛나고 있다.`,
+    `엘리베이터 내부다. 현재 층: [${state.elevatorFloor}]\n조작반 맨 아래에는 도면에 없는 붉은색 [13층] 버튼이 희미하게 빛나고 있다.`,
     "c-system",
     [
       {
@@ -868,20 +858,14 @@ function interact() {
 
     let extraReaction = "";
     if (clue.id === "car_memo") {
-      extraReaction = "
-
-(물에 번져 이름이 지워져 있다... '강 순경의 아들 □□□'... 이상하게 가슴이 조여 온다.)";
+      extraReaction = "\n\n(물에 번져 이름이 지워져 있다... '강 순경의 아들 □□□'... 이상하게 가슴이 조여 온다.)";
     } else if (clue.id === "ledger") {
-      extraReaction = "
-
-(방문자 명부 13번째 줄에 내 이름이 적혀 있다... 내가 이곳에 발을 들이기도 전에 어떻게 기록된 거지?)";
+      extraReaction = "\n\n(방문자 명부 13번째 줄에 내 이름이 적혀 있다... 내가 이곳에 발을 들이기도 전에 어떻게 기록된 거지?)";
     }
 
     say(
       "중요 단서",
-      `[${clue.name}]을(를) 발견했다!
-
-${formatClueInspectionText(clue)}${extraReaction}`,
+      `[${clue.name}]을(를) 발견했다!\n\n${formatClueInspectionText(clue)}${extraReaction}`,
       "c-clue"
     );
 
@@ -900,9 +884,7 @@ ${formatClueInspectionText(clue)}${extraReaction}`,
     addLog(`소지품 획득: [${fItem.name}]`);
     renderInventoryUI(useConsumable);
     autoSaveGame();
-    say("SYSTEM", `소지품 [${fItem.name}]을(를) 획득했다!
-
-${fItem.desc}`, "c-system");
+    say("SYSTEM", `소지품 [${fItem.name}]을(를) 획득했다!\n\n${fItem.desc}`, "c-system");
     return;
   }
 
@@ -923,10 +905,7 @@ ${fItem.desc}`, "c-system");
         markHudDirty();
         say(
           "강현우",
-          `[${prop.name}]
-${prop.text}
-
-• [[mint:현장 정밀 조사 완료 (8/8)]]: 아파트 전역의 잔류 흔적을 모두 파악했다. 공포에 흔들리지 않는 [[mint:정신 내성]](정신력 소모 25% 완화)을 얻었으며, 거울의 진실을 마주할 준비가 되었다!`,
+          `[${prop.name}]\n${prop.text}\n\n• [[mint:현장 정밀 조사 완료 (8/8)]]: 아파트 전역의 잔류 흔적을 모두 파악했다. 공포에 흔들리지 않는 [[mint:정신 내성]](정신력 소모 25% 완화)을 얻었으며, 거울의 진실을 마주할 준비가 되었다!`,
           "c-hero"
         );
         return;
@@ -934,8 +913,7 @@ ${prop.text}
     }
     playSfx("step");
     markHudDirty();
-    say(prop.speaker, `[${prop.name}]
-${prop.text}`, prop.speakerClass);
+    say(prop.speaker, `[${prop.name}]\n${prop.text}`, prop.speakerClass);
     return;
   }
 
@@ -1049,7 +1027,7 @@ function talkToNPC(npc) {
   } else if (npc.id === "yoonseo") {
     const choices = [
       {
-        label: ""너는 누구니? 왜 이 어두운 복도에 혼자 서 있니?"",
+        label: "\"너는 누구니? 왜 이 어두운 복도에 혼자 서 있니?\"",
         action: () => {
           state.flags.metYoonseo = true;
           addLog("13층 복도의 소녀 윤서로부터 1304호 봉인 조건에 대한 단서를 들었다.");
@@ -1065,7 +1043,7 @@ function talkToNPC(npc) {
     if (state.deduced.includes("combo_yoonseo")) {
       if (!state.flags.savedYoonseo) {
         choices.push({
-          label: ""윤서야, 이제 무서워하지 마. 네가 악령이 아니라는 진실을 모두 알아냈어."",
+          label: "\"윤서야, 이제 무서워하지 마. 네가 악령이 아니라는 진실을 모두 알아냈어.\"",
           action: once("savedYoonseo", () => {
             unlockDoor1304();
             setGhostState(GHOST_STATE.IDLE);
@@ -1085,7 +1063,7 @@ function talkToNPC(npc) {
       }
     } else if (!state.flags.provokedYoonseo) {
       choices.push({
-        label: ""원혼이라면 당장 사라져라!" (적대적으로 경고한다)",
+        label: "\"원혼이라면 당장 사라져라!\" (적대적으로 경고한다)",
         action: once("provokedYoonseo", () => {
           changeSanity(-18, "13번째 방문자의 분노 촉발");
           if (state.mode === GAME_MODE.ENDED) return;
@@ -1117,11 +1095,7 @@ function triggerFinalMirrorEvent() {
 
   say(
     "SYSTEM",
-    `방 한가운데 놓인 낡은 거울 속에 1985년 10월 13일의 방이 비치고 있다.
-도출 진실: ${state.deduced.length}/${COMBINATIONS.length} · 환경 조사: ${state.examinedProps.length}/${PROPS.length}
-
-등 뒤에서 세 번의 노크 소리가 울린다. 똑. 똑. 똑.
-강현우는 마지막 결정을 내려야 한다.`,
+    `방 한가운데 놓인 낡은 거울 속에 1985년 10월 13일의 방이 비치고 있다.\n도출 진실: ${state.deduced.length}/${COMBINATIONS.length} · 환경 조사: ${state.examinedProps.length}/${PROPS.length}\n\n등 뒤에서 세 번의 노크 소리가 울린다. 똑. 똑. 똑.\n강현우는 마지막 결정을 내려야 한다.`,
     "c-system",
     [
       {
@@ -1157,11 +1131,7 @@ function triggerEnding(type) {
     addLog("엔딩 달성: [TRUE END - 마지막 방문자와 사라진 가족의 진실]");
     say(
       "TRUE END — 마지막 방문자와 사라진 가족의 진실",
-      "거울이 산산조각 나며 봉인되어 있던 13년 전의 기억이 완전히 되살아났다.
-
-1985년 10월 13일, 아버지의 광기 속에서 윤서를 구하려다 비상구 앞에 쓰러졌던 소년이 바로 강현우 자신이었다. 윤서는 악령이 아니라, 자신을 기억해 줄 마지막 방문자를 13년 동안 기다려 온 소녀였다.
-
-강현우가 윤서의 이름을 부르며 진실을 세상에 밝히겠다고 맹세하자, 13층의 붉은 어둠이 걷히고 방문자 명부의 마지막 줄이 사라졌다.",
+      "거울이 산산조각 나며 봉인되어 있던 13년 전의 기억이 완전히 되살아났다.\n\n1985년 10월 13일, 아버지의 광기 속에서 윤서를 구하려다 비상구 앞에 쓰러졌던 소년이 바로 강현우 자신이었다. 윤서는 악령이 아니라, 자신을 기억해 줄 마지막 방문자를 13년 동안 기다려 온 소녀였다.\n\n강현우가 윤서의 이름을 부르며 진실을 세상에 밝히겠다고 맹세하자, 13층의 붉은 어둠이 걷히고 방문자 명부의 마지막 줄이 사라졌다.",
       "c-clue",
       [
         { label: "처음부터 다시 플레이하기", action: () => startNewGameWithConfirm(true, false) },
@@ -1173,9 +1143,7 @@ function triggerEnding(type) {
     addLog("엔딩 달성: [NORMAL END - 봉인된 미제 사건]");
     say(
       "NORMAL END — 봉인된 미제 사건",
-      "강현우는 밝혀낸 일부 진실만을 토대로 1304호 일가족 실종 사건의 수사 보고서를 제출했다.
-
-사건은 서류상 해결되었지만, 윤서의 진실과 강현우 자신의 잃어버린 기억은 끝내 온전히 밝혀지지 않았다. 1년 뒤인 1999년 10월 13일 밤 11시 47분, 현관문 앞에서 다시 세 번의 노크 소리가 들려왔다.",
+      "강현우는 밝혀낸 일부 진실만을 토대로 1304호 일가족 실종 사건의 수사 보고서를 제출했다.\n\n사건은 서류상 해결되었지만, 윤서의 진실과 강현우 자신의 잃어버린 기억은 끝내 온전히 밝혀지지 않았다. 1년 뒤인 1999년 10월 13일 밤 11시 47분, 현관문 앞에서 다시 세 번의 노크 소리가 들려왔다.",
       "c-system",
       [
         { label: "모든 진실을 밝히기 위해 다시 도전하기", action: () => startNewGameWithConfirm(false, false) },
@@ -1187,9 +1155,7 @@ function triggerEnding(type) {
     addLog("엔딩 달성: [BAD END - 13번째 방문자]");
     say(
       "BAD END — 13번째 방문자",
-      "진실을 깨닫지 못한 채 문을 연 순간, 등 뒤의 복도가 어둠 속으로 사라졌다.
-
-방문자 명부의 13번째 칸에 적힌 '강현우'라는 이름이 붉게 물든다. 이제 강현우는 다음 형사가 찾아올 때까지 존재하지 않는 13층 복도를 배회하는 13번째 방문자가 되었다.",
+      "진실을 깨닫지 못한 채 문을 연 순간, 등 뒤의 복도가 어둠 속으로 사라졌다.\n\n방문자 명부의 13번째 칸에 적힌 '강현우'라는 이름이 붉게 물든다. 이제 강현우는 다음 형사가 찾아올 때까지 존재하지 않는 13층 복도를 배회하는 13번째 방문자가 되었다.",
       "c-ghost",
       [
         { label: "처음부터 다시 플레이하기", action: () => startNewGameWithConfirm(false, false) },
@@ -1213,9 +1179,7 @@ function triggerGameOver(title, reason) {
   choices.push({ label: "새 게임 시작", action: () => startNewGameWithConfirm(false, false) });
   choices.push({ label: "타이틀 화면으로 이동", action: returnToTitle });
 
-  say(`GAME OVER — ${title}`, `${reason}
-
-은하아파트 13층의 기록에는 또 한 명의 실종자가 추가되었다.`, "c-ghost", choices);
+  say(`GAME OVER — ${title}`, `${reason}\n\n은하아파트 13층의 기록에는 또 한 명의 실종자가 추가되었다.`, "c-ghost", choices);
 }
 
 function refreshTitleScreen() {
@@ -1291,8 +1255,7 @@ function loadGame() {
 
 function startNewGameWithConfirm(withPrologue = false, hideTitleOverlay = false) {
   if (hasValidSaveData()) {
-    const ok = window.confirm("기존 저장 데이터가 있습니다. 새 게임을 시작하시겠습니까?
-(방 이동이나 단서 획득 시 기존 저장 데이터가 덮어씌워집니다.)");
+    const ok = window.confirm("기존 저장 데이터가 있습니다. 새 게임을 시작하시겠습니까?\n(방 이동이나 단서 획득 시 기존 저장 데이터가 덮어씌워집니다.)");
     if (!ok) return false;
   }
   if (hideTitleOverlay) {
@@ -1422,23 +1385,29 @@ function bindUIEvents() {
 
   document.getElementById("btn-notebook")?.addEventListener("click", () => toggleNotebookDrawer());
   document.getElementById("btn-drawer-close")?.addEventListener("click", () => toggleNotebookDrawer(false));
-  document.getElementById("btn-combine")?.addEventListener("click", combineSelectedClues);
+
+  document.getElementById("btn-act-interact")?.addEventListener("click", () => { initAudio(); interact(); });
+  document.getElementById("btn-act-hide")?.addEventListener("click", () => { initAudio(); toggleHide(); });
+  document.getElementById("btn-combine")?.addEventListener("click", () => { initAudio(); combineSelectedClues(); });
+  document.getElementById("btn-use-sedative")?.addEventListener("click", () => { initAudio(); useConsumable("sedative"); });
 
   document.getElementById("btn-minimap")?.addEventListener("click", () => {
     state.showMinimap = !state.showMinimap;
+    const btn = document.getElementById("btn-minimap");
+    if (btn) btn.textContent = `미니맵: ${state.showMinimap ? "ON" : "OFF"}`;
     playSfx("switch");
-    document.getElementById("btn-minimap").textContent = "미니맵: " + (state.showMinimap ? "ON" : "OFF");
   });
 
   document.getElementById("btn-sound")?.addEventListener("click", () => {
-    const on = toggleSound();
-    document.getElementById("btn-sound").textContent = "사운드: " + (on ? "ON" : "OFF");
+    const enabled = toggleSound();
+    const btn = document.getElementById("btn-sound");
+    if (btn) btn.textContent = `사운드: ${enabled ? "ON" : "OFF"}`;
   });
 
   const handleToggleMotion = () => {
     setReducedMotion(!state.prefs.reducedMotion);
-    playSfx("switch");
     updateHUD(true);
+    playSfx("switch");
   };
   document.getElementById("btn-motion")?.addEventListener("click", handleToggleMotion);
   document.getElementById("btn-title-motion")?.addEventListener("click", handleToggleMotion);
@@ -1447,99 +1416,101 @@ function bindUIEvents() {
   document.getElementById("btn-load")?.addEventListener("click", loadGame);
   document.getElementById("btn-title")?.addEventListener("click", returnToTitle);
 
-  document.getElementById("btn-act-interact")?.addEventListener("click", interact);
-  document.getElementById("btn-act-hide")?.addEventListener("click", toggleHide);
-  document.getElementById("btn-use-sedative")?.addEventListener("click", () => useConsumable("sedative"));
+  window.addEventListener("blur", clearHeldInputs);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) clearHeldInputs();
+  });
 
-  document.querySelectorAll("[data-pad]").forEach(btn => {
+  document.addEventListener("keydown", e => {
+    if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+
+    if (e.code === "Tab") {
+      e.preventDefault();
+      if (state.mode === GAME_MODE.PLAY) toggleNotebookDrawer();
+      return;
+    }
+
+    if (e.code === "Escape") {
+      if (state.notebookOpen) { e.preventDefault(); toggleNotebookDrawer(false); return; }
+      if (state.mode === GAME_MODE.PROLOGUE) { e.preventDefault(); finishPrologue(); return; }
+      if (state.mode === GAME_MODE.FLASHBACK) { e.preventDefault(); closeMemoryFlashback(); return; }
+    }
+
+    if (state.mode === GAME_MODE.PROLOGUE) {
+      if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); advancePrologue(); }
+      return;
+    }
+
+    if (state.mode === GAME_MODE.FLASHBACK) {
+      if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); closeMemoryFlashback(); }
+      return;
+    }
+
+    if (state.mode === GAME_MODE.DIALOGUE && state.activeChoices.length > 0) {
+      const idx = Number(e.key) - 1;
+      if (idx >= 0 && idx < state.activeChoices.length) {
+        e.preventDefault();
+        const chosen = state.activeChoices[idx];
+        state.activeChoices = [];
+        const chBox = document.getElementById("choices");
+        if (chBox) chBox.innerHTML = "";
+        setGameMode(GAME_MODE.PLAY);
+        chosen.action();
+      }
+      return;
+    }
+
+    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) e.preventDefault();
+    initAudio();
+    state.keys[e.code] = true;
+
+    if (e.code === "Space" && state.isHiding && state.breathHold.active) {
+      if (!e.repeat) holdBreathAction();
+      return;
+    }
+
+    if (e.repeat) return;
+
+    if (e.code === "KeyC") {
+      if (state.notebookOpen) combineSelectedClues();
+      else toggleNotebookDrawer(true);
+    } else if (!state.notebookOpen && (e.code === "KeyE" || e.code === "Space")) {
+      interact();
+    } else if (!state.notebookOpen && e.code === "KeyH") {
+      toggleHide();
+    } else if (e.code === "KeyQ") {
+      useConsumable("sedative");
+    } else if (e.code === "KeyM") {
+      state.showMinimap = !state.showMinimap;
+      const btn = document.getElementById("btn-minimap");
+      if (btn) btn.textContent = `미니맵: ${state.showMinimap ? "ON" : "OFF"}`;
+      playSfx("switch");
+    }
+  });
+
+  document.addEventListener("keyup", e => {
+    state.keys[e.code] = false;
+  });
+
+  document.querySelectorAll(".dpad button[data-pad]").forEach(btn => {
     const dir = btn.getAttribute("data-pad");
-    const release = () => { state.padKeys[dir] = false; };
-    btn.addEventListener("pointerdown", () => { if (state.mode === GAME_MODE.PLAY) state.padKeys[dir] = true; });
+    const press = e => {
+      if (e.cancelable) e.preventDefault();
+      initAudio();
+      state.padKeys[dir] = true;
+    };
+    const release = e => {
+      if (e.cancelable) e.preventDefault();
+      state.padKeys[dir] = false;
+    };
+    btn.addEventListener("pointerdown", press);
     btn.addEventListener("pointerup", release);
     btn.addEventListener("pointerleave", release);
     btn.addEventListener("pointercancel", release);
   });
 }
 
-document.addEventListener("keydown", e => {
-  const code = e.code;
-
-  if (state.mode === GAME_MODE.PROLOGUE) {
-    if (["Space", "Enter", "KeyE", "Escape"].includes(code)) e.preventDefault();
-    if (e.repeat) return;
-    if (code === "Escape") finishPrologue();
-    else if (code === "Space" || code === "Enter" || code === "KeyE") advancePrologue();
-    return;
-  }
-
-  if (state.mode === GAME_MODE.FLASHBACK) {
-    if (["Space", "Enter", "KeyE", "Escape"].includes(code)) e.preventDefault();
-    if (e.repeat) return;
-    if (["Space", "Enter", "KeyE", "Escape"].includes(code)) closeMemoryFlashback();
-    return;
-  }
-
-  if ((state.mode === GAME_MODE.DIALOGUE || state.mode === GAME_MODE.ENDED) && state.activeChoices.length > 0) {
-    if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(code)) e.preventDefault();
-    if (e.repeat) return;
-    if (code.startsWith("Digit")) {
-      const idx = parseInt(code.replace("Digit", ""), 10) - 1;
-      if (state.activeChoices[idx]) {
-        e.preventDefault();
-        const chosen = state.activeChoices[idx];
-        state.activeChoices = [];
-        const chBox = document.getElementById("choices");
-        if (chBox) chBox.innerHTML = "";
-        if (state.mode === GAME_MODE.DIALOGUE) setGameMode(GAME_MODE.PLAY);
-        chosen.action();
-      }
-    }
-    return;
-  }
-
-  if (code === "Tab" && state.mode === GAME_MODE.PLAY) {
-    e.preventDefault();
-    if (!e.repeat) toggleNotebookDrawer();
-    return;
-  }
-
-  if (code === "Escape" && state.notebookOpen) {
-    e.preventDefault();
-    toggleNotebookDrawer(false);
-    return;
-  }
-
-  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(code)) {
-    e.preventDefault();
-  }
-  state.keys[code] = true;
-
-  if (e.repeat || state.mode !== GAME_MODE.PLAY || state.notebookOpen) return;
-
-  if (state.isHiding && state.breathHold.active && code === "Space") {
-    holdBreathAction();
-    return;
-  }
-
-  if (code === "KeyE" || code === "Space") interact();
-  else if (code === "KeyH") toggleHide();
-  else if (code === "KeyM") {
-    state.showMinimap = !state.showMinimap;
-    playSfx("switch");
-  } else if (code === "KeyC") combineSelectedClues();
-  else if (code === "KeyQ") useConsumable("sedative");
-});
-
-document.addEventListener("keyup", e => {
-  state.keys[e.code] = false;
-});
-
-window.addEventListener("blur", clearHeldInputs);
-
-bindUIEvents();
-snapCamera();
 refreshTitleScreen();
-renderInventoryUI(useConsumable);
-renderClueUI(toggleSelectClue);
 updateHUD(true);
+bindUIEvents();
 requestAnimationFrame(gameLoop);

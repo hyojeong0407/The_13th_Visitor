@@ -505,7 +505,6 @@ export function drawSceneArt(canvasId, artType) {
     g.fillStyle = "#2b4263"; g.fillRect(68, 42, 24, 24);
     g.fillStyle = "#f2cbb0"; g.fillRect(72, 24, 16, 16);
 
-    // 훼손된 수첩 이름 해금 연출 카드 ([□□□] -> [강현우])
     g.fillStyle = "#111624";
     g.fillRect(18, 70, 124, 32);
     g.strokeStyle = "#8FC9FF";
