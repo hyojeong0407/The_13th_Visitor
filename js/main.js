@@ -1,6 +1,6 @@
 /* =========================================================================
    7. 메인 진입점 (게임 루프, 서사 반전 보호, 진실 게이트, 추리 루프, 이벤트 바인딩)
-   Phase 3 (v1.5.0)
+   v1.6.0
    ========================================================================= */
 import { APP_VERSION } from "../version.js";
 import {
@@ -8,7 +8,7 @@ import {
   FIELD_ITEMS, PROPS, ROOMS, NPCS
 } from "./data.js";
 import {
-  TILE, PLAYER_CONFIG, GHOST_CONFIG, SANITY_CONFIG
+  TILE, PLAYER_CONFIG, GHOST_CONFIG, SANITY_CONFIG, UI_CONFIG
 } from "./config.js";
 import {
   state, GAME_MODE, GHOST_STATE,
@@ -27,7 +27,9 @@ import { updateVisualTimers, renderGame } from "./render.js";
 import {
   formatHighlightedDialogue, say, addLog, toggleNotebookDrawer,
   updateHUD, renderInventoryUI, formatClueInspectionText,
-  renderClueUI, drawSceneArt, renderTutorialBanner
+  renderClueUI, renderTutorialBanner,
+  startTypewriter, isTypewriterActive, finishTypewriter, updateTypewriter,
+  startSceneAnimation, stopSceneAnimation, updateSceneAnimation
 } from "./ui.js";
 
 const canvas = document.getElementById("screen");
@@ -138,20 +140,26 @@ function renderPrologueScene() {
   document.getElementById("prologue-chapter").textContent = scene.chapter;
   document.getElementById("prologue-page").textContent = `${state.prologueIndex + 1} / ${PROLOGUE_SCENES.length}`;
   document.getElementById("prologue-title").textContent = scene.title;
-  document.getElementById("prologue-text").innerHTML = formatHighlightedDialogue(scene.text);
   document.getElementById("btn-prologue-next").textContent =
     state.prologueIndex === PROLOGUE_SCENES.length - 1 ? "수사 시작 ▶ [Space]" : "다음 ▶ [Space]";
-  drawSceneArt("prologue-art-canvas", scene.art);
+  startTypewriter("prologue-text", scene.text, "SYSTEM", UI_CONFIG.PROLOGUE_CHARS_PER_SEC);
+  startSceneAnimation("prologue-art-canvas", scene.art);
 }
 
 function advancePrologue() {
   if (state.mode !== GAME_MODE.PROLOGUE) return;
+  if (isTypewriterActive("prologue-text")) {
+    finishTypewriter();
+    return;
+  }
   state.prologueIndex++;
   if (state.prologueIndex >= PROLOGUE_SCENES.length) finishPrologue();
   else renderPrologueScene();
 }
 
 function finishPrologue() {
+  finishTypewriter();
+  stopSceneAnimation();
   setGameMode(GAME_MODE.PLAY);
   const ov = document.getElementById("prologue-overlay");
   if (ov) ov.style.display = "none";
@@ -182,13 +190,18 @@ function triggerMemoryFlashback(key) {
   }
 
   document.getElementById("flashback-title").textContent = scene.title;
-  document.getElementById("flashback-text").innerHTML = formatHighlightedDialogue(scene.text);
-  drawSceneArt("flashback-art-canvas", scene.art);
+  startTypewriter("flashback-text", scene.text, "강현우", UI_CONFIG.PROLOGUE_CHARS_PER_SEC);
+  startSceneAnimation("flashback-art-canvas", scene.art);
   const fb = document.getElementById("flashback-overlay");
   if (fb) fb.style.display = "flex";
 }
 
 function closeMemoryFlashback() {
+  if (isTypewriterActive("flashback-text")) {
+    finishTypewriter();
+    return;
+  }
+  stopSceneAnimation();
   const closedKey = state.pendingFlashbackKey;
   state.pendingFlashbackKey = null;
   const fb = document.getElementById("flashback-overlay");
@@ -257,7 +270,7 @@ function toggleSelectClue(id) {
     if (state.selectedClues.length >= 2) state.selectedClues.shift();
     state.selectedClues.push(id);
     if (c) {
-      say("수사 수첩", formatClueInspectionText(c), "c-clue");
+      say("수사 수첩", formatClueInspectionText(c), "c-clue", [], { instant: true });
     }
   }
   renderClueUI(toggleSelectClue);
@@ -314,7 +327,8 @@ function applyWrongCombinationPenalty() {
     : "흐트러진 정신력이 13층의 원념을 끌어당기고 있다!";
   say(
     "강현우",
-    `억지로 끼워 맞춘 가설이야... 각 단서의 [[mint:추리 질문]]을 다시 대조해 보자. (정신력 ${penalty})\n${warningHint}`,
+    `억지로 끼워 맞춘 가설이야... 각 단서의 [[mint:추리 질문]]을 다시 대조해 보자. (정신력 ${penalty})
+${warningHint}`,
     "c-hero"
   );
 }
@@ -344,7 +358,10 @@ function combineSelectedClues() {
   }
 
   if (state.deduced.includes(match.id)) {
-    say("SYSTEM", `이미 도출한 진실입니다.\n\n${match.title}\n${match.summary}`, "c-system");
+    say("SYSTEM", `이미 도출한 진실입니다.
+
+${match.title}
+${match.summary}`, "c-system");
     return;
   }
 
@@ -364,7 +381,10 @@ function combineSelectedClues() {
   autoSaveGame();
 
   if (state.notebookOpen) toggleNotebookDrawer(false);
-  say("진실 해금", `증거 조합 성공! 새로운 진실이 수첩에 기록되었다.\n\n${match.title}\n${match.summary}`, "c-clue");
+  say("진실 해금", `증거 조합 성공! 새로운 진실이 수첩에 기록되었다.
+
+${match.title}
+${match.summary}`, "c-clue");
 
   if (match.flashbackKey === "yoonseo" && !state.flags.flashbackYoonseoSeen) {
     state.flags.flashbackYoonseoSeen = true;
@@ -579,20 +599,22 @@ function handleDoorTransition(door) {
     }
   } else {
     state.lightState = state.currentRoom === "1304호 숨겨진 방" ? "out" : "on";
-    say("SYSTEM", `${state.currentRoom}에 들어왔다.`, "c-system");
+    if (state.currentRoom === "1304호 숨겨진 방" && !state.flags.visitedSecret) {
+      state.flags.visitedSecret = true;
+      say("강현우", "벽장 뒤편에 이런 밀실이 숨겨져 있었어... 방 한가운데 낡은 거울과 기록 보관함이 놓여 있다.", "c-hero");
+      changeSanity(-6, "숨겨진 방의 음산한 기운");
+    } else if (!state.lastDialogueImportant) {
+      say("SYSTEM", `${state.currentRoom}에 들어왔다.`, "c-system", [], { instant: true });
+    }
     autoSaveGame();
-  }
-
-  if (state.currentRoom === "1304호 숨겨진 방" && !state.flags.visitedSecret) {
-    state.flags.visitedSecret = true;
-    changeSanity(-6, "숨겨진 방의 음산한 기운");
   }
 }
 
 function openElevatorMenu() {
   say(
     "SYSTEM",
-    `엘리베이터 내부다. 현재 층: [${state.elevatorFloor}]\n조작반 맨 아래에는 도면에 없는 붉은색 [13층] 버튼이 희미하게 빛나고 있다.`,
+    `엘리베이터 내부다. 현재 층: [${state.elevatorFloor}]
+조작반 맨 아래에는 도면에 없는 붉은색 [13층] 버튼이 희미하게 빛나고 있다.`,
     "c-system",
     [
       {
@@ -602,7 +624,7 @@ function openElevatorMenu() {
           state.lightState = "on";
           state.player.x = 17; state.player.y = 3; state.player.dir = "left";
           syncPlayerPixelToGrid(); snapCamera(); playSfx("door");
-          say("SYSTEM", "엘리베이터 문이 열리고 1층 복도로 나왔다.", "c-system");
+          say("SYSTEM", "엘리베이터 문이 열리고 1층 복도로 나왔다.", "c-system", [], { instant: true });
           autoSaveGame(); markHudDirty();
         }
       },
@@ -613,7 +635,7 @@ function openElevatorMenu() {
           state.lightState = "on";
           state.player.x = 10; state.player.y = 2; state.player.dir = "down";
           syncPlayerPixelToGrid(); snapCamera(); playSfx("door");
-          say("SYSTEM", "축축한 곰팡이 냄새가 진동하는 지하 주차장에 도착했다.", "c-system");
+          say("SYSTEM", "축축한 곰팡이 냄새가 진동하는 지하 주차장에 도착했다.", "c-system", [], { instant: true });
           autoSaveGame(); markHudDirty();
         }
       },
@@ -750,6 +772,7 @@ function checkStepEvents() {
 
   if (state.currentRoom === "1304호 거실" && state.collected.includes("ledger") && !state.flags.houseGhostSeen) {
     state.flags.houseGhostSeen = true;
+    playSfx("knock3");
     startGhostWarning(
       "1304호 거실", 15, 4,
       "현관 쪽에서 세 번의 노크 소리가 울리더니 거실 형광등이 심하게 깜빡인다! 시야 밖 은신처에 숨거나 복도로 벗어나라 [H]!",
@@ -815,6 +838,10 @@ function getBestInteractTarget() {
 
 function interact() {
   if (state.mode !== GAME_MODE.PLAY || state.notebookOpen) return;
+  if (isTypewriterActive("message")) {
+    finishTypewriter();
+    return;
+  }
   if (state.isHiding) {
     toggleHide();
     return;
@@ -865,10 +892,13 @@ function interact() {
 
     say(
       "중요 단서",
-      `[${clue.name}]을(를) 발견했다!\n\n${formatClueInspectionText(clue)}${extraReaction}`,
+      `[${clue.name}]을(를) 발견했다!
+
+${formatClueInspectionText(clue)}${extraReaction}`,
       "c-clue"
     );
 
+    // 정신력 페널티를 먼저 반영한 뒤 자동 저장 실행
     if (clue.id === "recording" || clue.id === "ledger") {
       changeSanity(-5, "충격적인 진실의 단서");
     }
@@ -884,7 +914,9 @@ function interact() {
     addLog(`소지품 획득: [${fItem.name}]`);
     renderInventoryUI(useConsumable);
     autoSaveGame();
-    say("SYSTEM", `소지품 [${fItem.name}]을(를) 획득했다!\n\n${fItem.desc}`, "c-system");
+    say("SYSTEM", `소지품 [${fItem.name}]을(를) 획득했다!
+
+${fItem.desc}`, "c-system");
     return;
   }
 
@@ -905,7 +937,10 @@ function interact() {
         markHudDirty();
         say(
           "강현우",
-          `[${prop.name}]\n${prop.text}\n\n• [[mint:현장 정밀 조사 완료 (8/8)]]: 아파트 전역의 잔류 흔적을 모두 파악했다. 공포에 흔들리지 않는 [[mint:정신 내성]](정신력 소모 25% 완화)을 얻었으며, 거울의 진실을 마주할 준비가 되었다!`,
+          `[${prop.name}]
+${prop.text}
+
+• [[mint:현장 정밀 조사 완료 (8/8)]]: 아파트 전역의 잔류 흔적을 모두 파악했다. 공포에 흔들리지 않는 [[mint:정신 내성]](정신력 소모 25% 완화)을 얻었으며, 거울의 진실을 마주할 준비가 되었다!`,
           "c-hero"
         );
         return;
@@ -913,7 +948,8 @@ function interact() {
     }
     playSfx("step");
     markHudDirty();
-    say(prop.speaker, `[${prop.name}]\n${prop.text}`, prop.speakerClass);
+    say(prop.speaker, `[${prop.name}]
+${prop.text}`, prop.speakerClass);
     return;
   }
 
@@ -942,6 +978,12 @@ function once(flagName, action) {
   };
 }
 
+function addLogOnce(flagName, text) {
+  if (state.flags[flagName]) return;
+  state.flags[flagName] = true;
+  addLog(text);
+}
+
 function talkToNPC(npc) {
   if (npc.id === "park") {
     const choices = [
@@ -949,7 +991,7 @@ function talkToNPC(npc) {
         label: "1985년 1304호 실종 사건에 대해 묻는다",
         action: () => {
           state.flags.talkedPark = true;
-          addLog("경비원 박만식에게 1985년 실종 사건의 초기 증언을 들었다.");
+          addLogOnce("loggedTalkedPark", "경비원 박만식에게 1985년 실종 사건의 초기 증언을 들었다.");
           say("박만식 (경비원)", "1985년 10월 13일 밤이었지... 비명이 들려서 올라갔을 땐 집 안이 텅 비어 있었어. 비상구 앞에서 울고 있던 열다섯 살 소년 하나만 구조됐지.", "c-npc");
         }
       },
@@ -957,7 +999,7 @@ function talkToNPC(npc) {
         label: "사건 당일 출동했던 경찰 차량에 대해 묻는다",
         action: () => {
           state.flags.askedParkCar = true;
-          addLog("박만식으로부터 지하 주차장에 방치된 옛 순찰차 이야기를 들었다.");
+          addLogOnce("loggedAskedParkCar", "박만식으로부터 지하 주차장에 방치된 옛 순찰차 이야기를 들었다.");
           say("박만식 (경비원)", "그날 선임 순경 한 분이 실종되면서 함께 온 지원 순찰차가 지하 주차장 구석에 방치됐었소... 유류품 정리가 덜 된 채 그대로 있을지도 모르지.", "c-npc");
         }
       }
@@ -978,7 +1020,7 @@ function talkToNPC(npc) {
         action: () => {
           state.flags.parkStage2 = true;
           unlockDoor1304();
-          addLog("박만식이 1985년 방화문 시건과 출입 기록 파기를 일부 인정했다.");
+          addLogOnce("loggedParkStage2", "박만식이 1985년 방화문 시건과 출입 기록 파기를 일부 인정했다.");
           say("박만식 (경비원)", "...두 기록을 맞췄군. 맞아, 그날 밤 1304호 아버지가 망상에 미쳐 가족을 가뒀어. 난 겁이 나서 방화문을 잠그고 신고를 늦췄지. 하지만 그날 밤 현장에 있던 소년이 누구였는지는 말할 수 없소...", "c-npc");
         }
       });
@@ -999,6 +1041,11 @@ function talkToNPC(npc) {
       });
     }
 
+    choices.push({
+      label: "대화를 마친다",
+      action: () => say("강현우", "알겠습니다. 경비실과 아파트 내부를 좀 더 살펴보겠습니다.", "c-hero")
+    });
+
     say("박만식 (경비원)", "이 밤중에 무슨 일이십니까? 은하아파트는 곧 철거될 건물입니다. 13층 같은 건 애초에 없어요.", "c-npc", choices);
   } else if (npc.id === "han") {
     const choices = [
@@ -1006,7 +1053,7 @@ function talkToNPC(npc) {
         label: "밤마다 위층에서 들린다는 발소리에 대해 묻는다",
         action: () => {
           state.flags.talkedHan = true;
-          addLog("주민 한미정에게 매일 밤 11시 47분마다 들리는 울음소리를 들었다.");
+          addLogOnce("loggedTalkedHan", "주민 한미정에게 매일 밤 11시 47분마다 들리는 울음소리를 들었다.");
           say("한미정 (주민)", "저는 1204호에 살아요. 매일 밤 11시 47분만 되면 천장 위... 13층에서 여자아이 울음소리와 노크 소리가 들려요. 그 직전엔 꼭 복도 형광등이 깜빡거리더라고요.", "c-npc");
         }
       }
@@ -1023,6 +1070,11 @@ function talkToNPC(npc) {
       });
     }
 
+    choices.push({
+      label: "대화를 마친다",
+      action: () => say("강현우", "걱정하지 마세요. 제가 반드시 원인을 밝혀내겠습니다.", "c-hero")
+    });
+
     say("한미정 (주민)", "형사님이신가요...? 제발 저 좀 살려주세요. 12층 위에는 아무것도 없어야 하는데, 누군가 계속 문을 두드려요.", "c-npc", choices);
   } else if (npc.id === "yoonseo") {
     const choices = [
@@ -1030,7 +1082,7 @@ function talkToNPC(npc) {
         label: "\"너는 누구니? 왜 이 어두운 복도에 혼자 서 있니?\"",
         action: () => {
           state.flags.metYoonseo = true;
-          addLog("13층 복도의 소녀 윤서로부터 1304호 봉인 조건에 대한 단서를 들었다.");
+          addLogOnce("loggedMetYoonseo", "13층 복도의 소녀 윤서로부터 1304호 봉인 조건에 대한 단서를 들었다.");
           say(
             "윤서",
             "...아저씨도 13번째 방문자인가요? 1304호 문은 안쪽에서 단단히 잠겨 있어요. 존재하지 않는 13층이 왜 생겨났는지, 누가 밖에서 방화문을 잠갔는지 그 진실을 깨닫기 전엔 열리지 않을 거예요... 그리고 형광등이 깜빡이면 꼭 숨어야 해요. 망가진 아빠가 오고 있다는 신호니까요.",
@@ -1077,11 +1129,17 @@ function talkToNPC(npc) {
       });
     }
 
+    choices.push({
+      label: "조용히 물러난다",
+      action: () => say("강현우", "잠시만 기다려, 윤서야. 내가 1304호의 기록을 확인하고 돌아올게.", "c-hero")
+    });
+
     say("윤서", "......똑, 똑, 똑. 열두 번까지는 참았는데, 열세 번째 노크가 시작됐어요.", "c-npc", choices);
   }
 }
 
 function triggerFinalMirrorEvent() {
+  playSfx("knock3");
   const hasRequiredTruths =
     state.deduced.length >= 5 &&
     state.deduced.includes("combo_yoonseo") &&
@@ -1095,7 +1153,11 @@ function triggerFinalMirrorEvent() {
 
   say(
     "SYSTEM",
-    `방 한가운데 놓인 낡은 거울 속에 1985년 10월 13일의 방이 비치고 있다.\n도출 진실: ${state.deduced.length}/${COMBINATIONS.length} · 환경 조사: ${state.examinedProps.length}/${PROPS.length}\n\n등 뒤에서 세 번의 노크 소리가 울린다. 똑. 똑. 똑.\n강현우는 마지막 결정을 내려야 한다.`,
+    `방 한가운데 놓인 낡은 거울 속에 1985년 10월 13일의 방이 비치고 있다.
+도출 진실: ${state.deduced.length}/${COMBINATIONS.length} · 환경 조사: ${state.examinedProps.length}/${PROPS.length}
+
+등 뒤에서 세 번의 노크 소리가 울린다. 똑. 똑. 똑.
+강현우는 마지막 결정을 내려야 한다.`,
     "c-system",
     [
       {
@@ -1179,7 +1241,9 @@ function triggerGameOver(title, reason) {
   choices.push({ label: "새 게임 시작", action: () => startNewGameWithConfirm(false, false) });
   choices.push({ label: "타이틀 화면으로 이동", action: returnToTitle });
 
-  say(`GAME OVER — ${title}`, `${reason}\n\n은하아파트 13층의 기록에는 또 한 명의 실종자가 추가되었다.`, "c-ghost", choices);
+  say(`GAME OVER — ${title}`, `${reason}
+
+은하아파트 13층의 기록에는 또 한 명의 실종자가 추가되었다.`, "c-ghost", choices);
 }
 
 function refreshTitleScreen() {
@@ -1280,6 +1344,8 @@ function resetGame(withPrologue = false) {
 }
 
 function returnToTitle() {
+  finishTypewriter();
+  stopSceneAnimation();
   setGameMode(GAME_MODE.TITLE);
   state.activeChoices = [];
   state.pendingFlashbackKey = null;
@@ -1335,6 +1401,8 @@ function gameLoop(now) {
   lastTime = now;
 
   updateVisualTimers(dt);
+  updateTypewriter(dt);
+  updateSceneAnimation(dt);
 
   if (state.mode === GAME_MODE.PLAY) {
     updatePlayerMovement(dt);
@@ -1437,25 +1505,35 @@ function bindUIEvents() {
     }
 
     if (state.mode === GAME_MODE.PROLOGUE) {
-      if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); advancePrologue(); }
+      if (e.code === "Space" || e.code === "Enter" || e.code === "KeyE") {
+        e.preventDefault();
+        if (!e.repeat) advancePrologue();
+      }
       return;
     }
 
     if (state.mode === GAME_MODE.FLASHBACK) {
-      if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); closeMemoryFlashback(); }
+      if (e.code === "Space" || e.code === "Enter" || e.code === "KeyE") {
+        e.preventDefault();
+        if (!e.repeat) closeMemoryFlashback();
+      }
       return;
     }
 
-    if (state.mode === GAME_MODE.DIALOGUE && state.activeChoices.length > 0) {
+    if ((state.mode === GAME_MODE.DIALOGUE || state.mode === GAME_MODE.ENDED) && state.activeChoices.length > 0) {
       const idx = Number(e.key) - 1;
       if (idx >= 0 && idx < state.activeChoices.length) {
         e.preventDefault();
+        finishTypewriter();
         const chosen = state.activeChoices[idx];
         state.activeChoices = [];
         const chBox = document.getElementById("choices");
         if (chBox) chBox.innerHTML = "";
-        setGameMode(GAME_MODE.PLAY);
+        if (state.mode === GAME_MODE.DIALOGUE) setGameMode(GAME_MODE.PLAY);
         chosen.action();
+      } else if ((e.code === "Space" || e.code === "Enter") && isTypewriterActive("message")) {
+        e.preventDefault();
+        finishTypewriter();
       }
       return;
     }

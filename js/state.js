@@ -1,8 +1,8 @@
 /* =========================================================================
-   3. 게임 모드 상태 머신(FSM), 13번째 방문자 상태 머신 & 세이브/로드 관리 (v1.5.0)
+   3. 게임 모드 상태 머신(FSM), 13번째 방문자 상태 머신 & 세이브/로드 관리 (v1.6.0)
    ========================================================================= */
 import { APP_VERSION } from "../version.js";
-import { ROOMS } from "./data.js";
+import { ROOMS, CLUES, COMBINATIONS, FIELD_ITEMS, PROPS } from "./data.js";
 import {
   TILE, GHOST_CONFIG, BREATH_CONFIG, SANITY_CONFIG, UI_CONFIG
 } from "./config.js";
@@ -73,6 +73,7 @@ export const state = {
   flags: {},
   activeChoices: [],
   pendingFlashbackKey: null,
+  lastDialogueImportant: false,
 
   isHiding: false,
   currentHidingId: "",
@@ -92,6 +93,13 @@ export const state = {
 
   prologueIndex: 0,
   tutorialStep: 0,
+
+  sceneAnim: {
+    canvasId: null,
+    artType: null,
+    timer: 0,
+    cues: {}
+  },
 
   ghost: {
     state: GHOST_STATE.IDLE,
@@ -185,7 +193,9 @@ export function getUnlockedEndings() {
   if (cachedUnlockedEndings !== null) return cachedUnlockedEndings;
   try {
     const raw = safeGet("visitorEndings");
-    cachedUnlockedEndings = raw ? JSON.parse(raw) : [];
+    const parsed = raw ? JSON.parse(raw) : [];
+    const validKeys = new Set(["TRUE", "NORMAL", "BAD"]);
+    cachedUnlockedEndings = Array.isArray(parsed) ? parsed.filter(k => validKeys.has(k)) : [];
   } catch (e) {
     cachedUnlockedEndings = [];
   }
@@ -241,15 +251,28 @@ export function autoSaveGame() {
   safeSet("visitorSave", JSON.stringify(data));
 }
 
-export function applyLoadedData(data, findNearestWalkableFn, snapCameraFn) {
+export function migrateSaveData(raw) {
+  if (!raw || typeof raw !== "object") return {};
+  const data = { ...raw };
   const legacyRoomMap = {
     "거실": "1304호 거실",
     "안방": "1304호 안방",
     "아이 방": "1304호 아이 방",
     "숨겨진 방": "1304호 숨겨진 방"
   };
-  const loadedRoom = data.currentRoom || data.room || "1층 복도";
-  state.currentRoom = legacyRoomMap[loadedRoom] || (ROOMS[loadedRoom] ? loadedRoom : "1층 복도");
+  const room = data.currentRoom || data.room || "1층 복도";
+  data.currentRoom = legacyRoomMap[room] || (ROOMS[room] ? room : "1층 복도");
+  return data;
+}
+
+const VALID_CLUE_IDS = new Set(CLUES.map(c => c.id));
+const VALID_COMBO_IDS = new Set(COMBINATIONS.map(c => c.id));
+const VALID_ITEM_IDS = new Set(FIELD_ITEMS.map(i => i.id));
+const VALID_PROP_IDS = new Set(PROPS.map(p => p.id));
+
+export function applyLoadedData(rawData, findNearestWalkableFn, snapCameraFn) {
+  const data = migrateSaveData(rawData);
+  state.currentRoom = data.currentRoom || "1층 복도";
 
   const rawPlayer = data.player || { x: 4, y: 5, dir: "down" };
   const safePos = findNearestWalkableFn(state.currentRoom, rawPlayer.x ?? 4, rawPlayer.y ?? 5);
@@ -258,31 +281,44 @@ export function applyLoadedData(data, findNearestWalkableFn, snapCameraFn) {
     y: safePos.y,
     px: safePos.x * TILE,
     py: safePos.y * TILE,
-    dir: rawPlayer.dir || "down",
+    dir: ["up", "down", "left", "right"].includes(rawPlayer.dir) ? rawPlayer.dir : "down",
     moving: false,
     walkTimer: 0,
     stepParity: 0
   };
   snapCameraFn();
 
-  state.sanity = typeof data.sanity === "number"
+  state.sanity = typeof data.sanity === "number" && Number.isFinite(data.sanity)
     ? Math.max(10, Math.min(SANITY_CONFIG.MAX, data.sanity))
     : SANITY_CONFIG.INITIAL;
-  state.stamina = typeof data.stamina === "number" ? Math.max(0, Math.min(100, data.stamina)) : 100;
-  state.collected = Array.isArray(data.collected) ? data.collected : [];
-  state.deduced = Array.isArray(data.deduced) ? data.deduced : [];
+  state.stamina = typeof data.stamina === "number" && Number.isFinite(data.stamina)
+    ? Math.max(0, Math.min(100, data.stamina))
+    : 100;
+  state.collected = Array.isArray(data.collected)
+    ? [...new Set(data.collected.filter(id => VALID_CLUE_IDS.has(id)))]
+    : [];
+  state.deduced = Array.isArray(data.deduced)
+    ? [...new Set(data.deduced.filter(id => VALID_COMBO_IDS.has(id)))]
+    : [];
   state.wrongComboCount = typeof data.wrongComboCount === "number" ? Math.max(0, data.wrongComboCount) : 0;
-  state.pickedFieldItems = Array.isArray(data.pickedFieldItems) ? data.pickedFieldItems : [];
-  state.examinedProps = Array.isArray(data.examinedProps) ? data.examinedProps : [];
+  state.pickedFieldItems = Array.isArray(data.pickedFieldItems)
+    ? [...new Set(data.pickedFieldItems.filter(id => VALID_ITEM_IDS.has(id)))]
+    : [];
+  state.examinedProps = Array.isArray(data.examinedProps)
+    ? [...new Set(data.examinedProps.filter(id => VALID_PROP_IDS.has(id)))]
+    : [];
   state.inventory = data.inventory && typeof data.inventory === "object"
-    ? { sedative: data.inventory.sedative ?? 1 }
+    ? { sedative: Math.max(0, Number(data.inventory.sedative ?? 1) || 0) }
     : { sedative: 1 };
-  state.flags = data.flags || {};
-  state.hidingUseCount = data.hidingUseCount || {};
+  state.flags = data.flags && typeof data.flags === "object" ? { ...data.flags } : {};
+  state.hidingUseCount = data.hidingUseCount && typeof data.hidingUseCount === "object"
+    ? { ...data.hidingUseCount }
+    : {};
 
   state.selectedClues = [];
   state.activeChoices = [];
   state.pendingFlashbackKey = null;
+  state.lastDialogueImportant = false;
   clearHeldInputs();
   state.isHiding = false;
   state.currentHidingId = "";
@@ -328,6 +364,7 @@ export function resetStateFields(snapCameraFn) {
   state.flags = {};
   state.activeChoices = [];
   state.pendingFlashbackKey = null;
+  state.lastDialogueImportant = false;
   clearHeldInputs();
   state.isHiding = false;
   state.currentHidingId = "";

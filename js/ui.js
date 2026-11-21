@@ -1,5 +1,5 @@
 /* =========================================================================
-   6. UI · 대화창 포트레이트 · dirty-flag HUD 캐시 · Tab 수첩 메뉴 모듈 (v1.5.0)
+   6. UI · 대화창 포트레이트 · 타자기 연출 · 애니메이션 컷신 · 수첩 모듈 (v1.6.0)
    ========================================================================= */
 import { CLUES, COMBINATIONS, PROPS, TUTORIAL_STEPS } from "./data.js";
 import { UI_CONFIG } from "./config.js";
@@ -7,7 +7,7 @@ import {
   state, GAME_MODE, GHOST_STATE, setGameMode, clearHeldInputs,
   getUnlockedEndings, markHudDirty
 } from "./state.js";
-import { playSfx } from "./audio.js";
+import { playSfx, playVoiceBlip } from "./audio.js";
 
 const hudCache = {
   location: null,
@@ -48,7 +48,8 @@ export function escapeHtml(str) {
 export function formatHighlightedDialogue(rawText) {
   let html = escapeHtml(rawText);
 
-  html = html.replace(/\[\[(gold|blue|red|mint):([^\]]+)\]\]/g, (_, cls, inner) => {
+  // 내부에 단일 ']'가 포함된 태그([[blue:[Space]]])도 안전하게 파싱
+  html = html.replace(/\[\[(gold|blue|red|mint):((?:[^\[\]]|\[[^\]]*\])+)\]\]/g, (_, cls, inner) => {
     return `<span class="hl-${cls}">${inner}</span>`;
   });
 
@@ -59,15 +60,15 @@ export function formatHighlightedDialogue(rawText) {
     },
     {
       cls: "hl-blue",
-      regex: /(강현우|강 순경|윤서|박만식|한미정|벽장 뒤|숨겨진 방|낡은 거울|거울|이름 복원|\[H\]|\[E\]|\[C\]|\[M\]|\[Q\]|\[Tab\]|\[Space\])/g
+      regex: /(강현우|강 순경|윤서|박만식|한미정|벽장 뒤|숨겨진 방|낡은 거울|이름 복원|\[H\]|\[E\]|\[C\]|\[M\]|\[Q\]|\[Tab\]|\[Space\])/g
     },
     {
       cls: "hl-red",
-      regex: /(형광등이 격렬하게 깜빡|형광등이 불규칙하게 점멸|형광등이 심하게 깜빡|형광등이 깜빡이면|형광등이 깜빡거리면|문을 열지 마|정전|노크 소리|몸을 숨길 곳이 없다|실종|피로 쓴|GAME OVER|BAD END)/g
+      regex: /(형광등이 격렬하게 깜빡|형광등이 불규칙하게 점멸|형광등이 심하게 깜빡|형광등이 깜빡이면|형광등이 깜빡거리면|문을 열지 마|정전|노크 소리|몸을 숨길 곳이 없다|GAME OVER|BAD END)/g
     },
     {
       cls: "hl-mint",
-      regex: /(은신|숨기|캐비닛|대형 장롱|장롱|콘크리트 기둥|기둥|신경안정제|TRUE END|숨을 참|정신 내성)/g
+      regex: /(은신|숨기|캐비닛|대형 장롱|콘크리트 기둥|신경안정제|TRUE END|숨을 참|정신 내성)/g
     }
   ];
 
@@ -82,6 +83,143 @@ export function formatHighlightedDialogue(rawText) {
   });
 
   return html.replace(/\n/g, "<br>");
+}
+
+/* -------------------------------------------------------------------------
+   HTML-Safe 타자기(Typewriter) 텍스트 출력 엔진
+   ------------------------------------------------------------------------- */
+const typewriter = {
+  active: false,
+  targetId: "message",
+  fullHtml: "",
+  tokens: [],
+  visibleChars: 0,
+  totalChars: 0,
+  timer: 0,
+  cps: UI_CONFIG.TYPEWRITER_CHARS_PER_SEC,
+  speaker: "",
+  blipCounter: 0
+};
+
+function tokenizeFormattedHtml(html) {
+  const tokens = [];
+  let totalChars = 0;
+  let i = 0;
+  while (i < html.length) {
+    if (html[i] === "<") {
+      const closeIdx = html.indexOf(">", i);
+      if (closeIdx !== -1) {
+        const tag = html.slice(i, closeIdx + 1);
+        tokens.push({ type: "tag", value: tag });
+        i = closeIdx + 1;
+        continue;
+      }
+    }
+    if (html[i] === "&") {
+      const semiIdx = html.indexOf(";", i);
+      if (semiIdx !== -1 && semiIdx - i <= 8) {
+        const entity = html.slice(i, semiIdx + 1);
+        tokens.push({ type: "char", value: entity });
+        totalChars++;
+        i = semiIdx + 1;
+        continue;
+      }
+    }
+    tokens.push({ type: "char", value: html[i] });
+    totalChars++;
+    i++;
+  }
+  return { tokens, totalChars };
+}
+
+function buildPartialHtml(tokens, maxChars) {
+  let out = "";
+  let count = 0;
+  let openSpans = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (tok.type === "tag") {
+      if (count >= maxChars && tok.value === "<br>") break;
+      out += tok.value;
+      if (tok.value.startsWith("<span")) openSpans++;
+      else if (tok.value === "</span>" && openSpans > 0) openSpans--;
+    } else {
+      if (count >= maxChars) break;
+      out += tok.value;
+      count++;
+    }
+  }
+  while (openSpans > 0) {
+    out += "</span>";
+    openSpans--;
+  }
+  return out;
+}
+
+export function startTypewriter(targetId, rawText, speaker = "", cps = UI_CONFIG.TYPEWRITER_CHARS_PER_SEC) {
+  const el = document.getElementById(targetId);
+  const fullHtml = formatHighlightedDialogue(rawText);
+  if (!el) return;
+
+  const { tokens, totalChars } = tokenizeFormattedHtml(fullHtml);
+  typewriter.active = totalChars > 0;
+  typewriter.targetId = targetId;
+  typewriter.fullHtml = fullHtml;
+  typewriter.tokens = tokens;
+  typewriter.visibleChars = 0;
+  typewriter.totalChars = totalChars;
+  typewriter.timer = 0;
+  typewriter.cps = cps;
+  typewriter.speaker = speaker;
+  typewriter.blipCounter = 0;
+
+  if (totalChars === 0) {
+    el.innerHTML = "";
+    typewriter.active = false;
+  } else {
+    el.innerHTML = '<span class="tw-cursor">▌</span>';
+  }
+}
+
+export function isTypewriterActive(targetId = null) {
+  if (!typewriter.active) return false;
+  if (targetId && typewriter.targetId !== targetId) return false;
+  return true;
+}
+
+export function finishTypewriter() {
+  if (!typewriter.active) return false;
+  typewriter.active = false;
+  typewriter.visibleChars = typewriter.totalChars;
+  const el = document.getElementById(typewriter.targetId);
+  if (el) el.innerHTML = typewriter.fullHtml;
+  return true;
+}
+
+export function updateTypewriter(dt) {
+  if (!typewriter.active) return;
+  typewriter.timer += dt;
+  const nextCount = Math.min(typewriter.totalChars, Math.floor(typewriter.timer * typewriter.cps));
+  if (nextCount > typewriter.visibleChars) {
+    const prevCount = typewriter.visibleChars;
+    typewriter.visibleChars = nextCount;
+    typewriter.blipCounter += (nextCount - prevCount);
+
+    if (typewriter.blipCounter >= 3) {
+      typewriter.blipCounter = 0;
+      playVoiceBlip(typewriter.speaker);
+    }
+
+    const el = document.getElementById(typewriter.targetId);
+    if (el) {
+      if (typewriter.visibleChars >= typewriter.totalChars) {
+        typewriter.active = false;
+        el.innerHTML = typewriter.fullHtml;
+      } else {
+        el.innerHTML = buildPartialHtml(typewriter.tokens, typewriter.visibleChars) + '<span class="tw-cursor">▌</span>';
+      }
+    }
+  }
 }
 
 export function renderSpeakerPortrait(speakerName) {
@@ -171,18 +309,25 @@ export function renderSpeakerPortrait(speakerName) {
   for (let y = 0; y < H; y += 3) pctx.fillRect(0, y, W, 1);
 }
 
-export function say(speaker, text, speakerClass = "c-system", choices = []) {
+export function say(speaker, text, speakerClass = "c-system", choices = [], options = {}) {
   const sp = getHudRef("speaker");
   const msg = getHudRef("message");
   const chBox = getHudRef("choices");
+
+  state.lastDialogueImportant = speakerClass !== "c-system" || (Array.isArray(choices) && choices.length > 0);
 
   if (sp) {
     sp.textContent = speaker;
     sp.className = speakerClass;
   }
   if (msg) {
-    msg.innerHTML = formatHighlightedDialogue(text);
     msg.className = "c-npc";
+    if (options.instant) {
+      typewriter.active = false;
+      msg.innerHTML = formatHighlightedDialogue(text);
+    } else {
+      startTypewriter("message", text, speaker, UI_CONFIG.TYPEWRITER_CHARS_PER_SEC);
+    }
   }
 
   renderSpeakerPortrait(speaker);
@@ -201,6 +346,7 @@ export function say(speaker, text, speakerClass = "c-system", choices = []) {
       btn.className = "choice-btn";
       btn.textContent = `[${idx + 1}] ${ch.label}`;
       btn.addEventListener("click", () => {
+        finishTypewriter();
         state.activeChoices = [];
         chBox.innerHTML = "";
         if (state.mode === GAME_MODE.DIALOGUE) setGameMode(GAME_MODE.PLAY);
@@ -396,12 +542,19 @@ export function formatClueInspectionText(clue) {
   if (!clue) return "";
   const desc = getClueDisplayDescription(clue);
   if (!isClueInterpreted(clue)) {
-    return `[${clue.name}]\n${desc}\n\n• [[mint:추리 질문]]: ${clue.comboHint}`;
+    return `[${clue.name}]
+${desc}
+
+• [[mint:추리 질문]]: ${clue.comboHint}`;
   }
   const extraQuestion = hasRemainingTruths(clue)
-    ? `\n• [[mint:추가 추리 질문]]: ${clue.comboHint}`
+    ? `
+• [[mint:추가 추리 질문]]: ${clue.comboHint}`
     : "";
-  return `[${clue.name}]\n${desc}\n\n• [[gold:핵심 해석]]: ${clue.importance}${extraQuestion}`;
+  return `[${clue.name}]
+${desc}
+
+• [[gold:핵심 해석]]: ${clue.importance}${extraQuestion}`;
 }
 
 export function renderClueUI(onToggleClue) {
@@ -465,79 +618,347 @@ export function renderClueUI(onToggleClue) {
   markHudDirty();
 }
 
-export function drawSceneArt(canvasId, artType) {
+/* -------------------------------------------------------------------------
+   16비트 픽셀 애니메이션 프롤로그 & 기억 회상 컷신 렌더러
+   ------------------------------------------------------------------------- */
+export function startSceneAnimation(canvasId, artType) {
+  state.sceneAnim.canvasId = canvasId;
+  state.sceneAnim.artType = artType;
+  state.sceneAnim.timer = 0;
+  state.sceneAnim.cues = {};
+  drawSceneArt(canvasId, artType, 0);
+}
+
+export function stopSceneAnimation() {
+  state.sceneAnim.canvasId = null;
+  state.sceneAnim.artType = null;
+  state.sceneAnim.timer = 0;
+  state.sceneAnim.cues = {};
+}
+
+export function updateSceneAnimation(dt) {
+  if (!state.sceneAnim.canvasId || !state.sceneAnim.artType) return;
+  if (state.mode !== GAME_MODE.PROLOGUE && state.mode !== GAME_MODE.FLASHBACK) return;
+  state.sceneAnim.timer += dt;
+  drawSceneArt(state.sceneAnim.canvasId, state.sceneAnim.artType, state.sceneAnim.timer);
+}
+
+function triggerSceneCue(cueKey, fn) {
+  if (state.sceneAnim.cues[cueKey]) return;
+  state.sceneAnim.cues[cueKey] = true;
+  fn();
+}
+
+export function drawSceneArt(canvasId, artType, t = 0) {
   const c = document.getElementById(canvasId);
   if (!c) return;
   const g = c.getContext("2d");
   const W = c.width;
   const H = c.height;
+  const reduced = Boolean(state.prefs.reducedMotion);
 
-  g.fillStyle = "#090b14";
+  g.save();
+  g.fillStyle = "#080a12";
   g.fillRect(0, 0, W, H);
 
   if (artType === "apt_night") {
+    // 밤하늘 그라데이션 & 반짝이는 별
+    const sky = g.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, "#070914");
+    sky.addColorStop(1, "#131729");
+    g.fillStyle = sky;
+    g.fillRect(0, 0, W, H);
+
+    const stars = [[18, 16], [32, 34], [122, 42], [156, 52], [24, 62], [164, 18]];
+    stars.forEach(([sx, sy], idx) => {
+      const twinkle = reduced ? 0.6 : (0.35 + 0.55 * Math.sin(t * 3.2 + idx * 1.7));
+      g.fillStyle = `rgba(220, 232, 255, ${twinkle.toFixed(2)})`;
+      g.fillRect(sx, sy, 2, 2);
+    });
+
+    // 보름달 & 일렁이는 달무리
+    const haloR = reduced ? 16 : 15 + Math.sin(t * 2.2) * 2.5;
+    g.fillStyle = "rgba(242, 210, 139, 0.14)";
+    g.beginPath(); g.arc(146, 25, haloR, 0, Math.PI * 2); g.fill();
     g.fillStyle = "#f2d28b";
-    g.beginPath(); g.arc(132, 22, 9, 0, Math.PI * 2); g.fill();
-    g.fillStyle = "#1d2233"; g.fillRect(36, 16, 68, 94);
+    g.beginPath(); g.arc(146, 25, 9, 0, Math.PI * 2); g.fill();
+
+    // 흘러가는 밤구름
+    const cloudOffset = reduced ? 0 : ((t * 7) % (W + 60)) - 30;
+    g.fillStyle = "rgba(32, 39, 61, 0.65)";
+    g.fillRect(Math.round(cloudOffset), 20, 34, 6);
+    g.fillRect(Math.round(cloudOffset + 6), 17, 20, 4);
+
+    // 은하아파트 본관 & 옥상 안테나 점멸등
+    g.fillStyle = "#191e2e";
+    g.fillRect(42, 18, 78, 106);
+    g.fillStyle = "#111521";
+    g.fillRect(54, 10, 16, 8);
+    g.fillRect(98, 6, 2, 12);
+    const beaconOn = reduced ? true : (Math.floor(t * 2.4) % 2 === 0);
+    g.fillStyle = beaconOn ? "#F09BA8" : "#4a1c26";
+    g.fillRect(98, 4, 2, 2);
+
+    // 창문 점등/소등 애니메이션 + 맨 위층 1304호 붉은 점멸 & 실루엣
     for (let row = 0; row < 6; row++) {
       for (let col = 0; col < 4; col++) {
+        const wx = 50 + col * 16;
+        const wy = 26 + row * 15;
         const is1304 = row === 0 && col === 2;
-        g.fillStyle = is1304 ? "#F09BA8" : ((row + col) % 3 === 0 ? "#4f5975" : "#111420");
-        g.fillRect(43 + col * 14, 24 + row * 13, 8, 7);
+        if (is1304) {
+          const pulse = reduced ? 0.85 : (0.65 + 0.35 * Math.sin(t * 6.5));
+          g.fillStyle = `rgba(240, 155, 168, ${pulse.toFixed(2)})`;
+          g.fillRect(wx, wy, 10, 8);
+          // 창 안쪽을 스치는 검은 그림자
+          const shadowShift = reduced ? 3 : Math.round(3 + Math.sin(t * 2.4) * 3);
+          g.fillStyle = "#1a080d";
+          g.fillRect(wx + shadowShift, wy + 2, 3, 6);
+        } else {
+          const turnOffTime = 0.35 + ((row * 4 + col) % 7) * 0.24;
+          const lit = ((row + col) % 3 === 0) && (t < turnOffTime);
+          g.fillStyle = lit ? "#596587" : "#0e111c";
+          g.fillRect(wx, wy, 10, 8);
+        }
       }
     }
   } else if (artType === "corridor_13") {
-    g.fillStyle = "#1a131c"; g.fillRect(0, 0, W, H);
-    g.strokeStyle = "#543944"; g.lineWidth = 2; g.strokeRect(48, 24, 64, 62);
-    g.fillStyle = "#9ce0b8"; g.fillRect(72, 14, 16, 6);
-    g.fillStyle = "#F09BA8";
-    for (let i = 0; i < 6; i++) g.fillRect(18 + i * 4, 48, 2, 16);
-  } else if (artType === "knock_door") {
-    g.fillStyle = "#261f29"; g.fillRect(54, 12, 52, 88);
-    g.strokeStyle = "#F2D28B"; g.lineWidth = 1.5; g.strokeRect(54, 12, 52, 88);
-    g.fillStyle = "#F2D28B"; g.font = "bold 11px monospace"; g.textAlign = "center";
-    g.fillText("1304", 80, 30);
-    g.strokeStyle = "#F09BA8";
-    [12, 20, 28].forEach(r => { g.beginPath(); g.arc(80, 56, r, 0, Math.PI * 2); g.stroke(); });
-  } else if (artType === "memory_rescue") {
-    g.fillStyle = "#1c1824"; g.fillRect(0, 0, W, H);
-    g.fillStyle = "#9ce0b8"; g.fillRect(66, 8, 28, 7);
-    g.fillStyle = "#2b4263"; g.fillRect(68, 42, 24, 24);
-    g.fillStyle = "#f2cbb0"; g.fillRect(72, 24, 16, 16);
+    // 13층 복도 원근 배경
+    const flickerWave = reduced ? 1 : (Math.sin(t * 19) + Math.cos(t * 31));
+    const tubeOn = reduced ? true : flickerWave > -0.35;
 
-    g.fillStyle = "#111624";
-    g.fillRect(18, 70, 124, 32);
+    if (!tubeOn && t > 0.3) {
+      triggerSceneCue("corridor_flicker", () => playSfx("flicker"));
+    }
+
+    g.fillStyle = tubeOn ? "#1d1521" : "#0c0910";
+    g.fillRect(0, 0, W, H);
+
+    // 복도 원근선
+    g.strokeStyle = tubeOn ? "#5c3e4b" : "#2b1c23";
+    g.lineWidth = 1.5;
+    g.strokeRect(52, 28, 76, 68);
+    g.beginPath();
+    g.moveTo(0, 0); g.lineTo(52, 28);
+    g.moveTo(W, 0); g.lineTo(128, 28);
+    g.moveTo(0, H); g.lineTo(52, 96);
+    g.moveTo(W, H); g.lineTo(128, 96);
+    g.stroke();
+
+    // 천장 형광등
+    g.fillStyle = tubeOn ? "#dce8ff" : "#282c38";
+    g.fillRect(72, 10, 36, 4);
+
+    // 초록색 EXIT 비상구 유도등
+    const exitGlow = reduced ? 0.9 : (0.75 + 0.25 * Math.sin(t * 8));
+    g.fillStyle = `rgba(156, 224, 184, ${exitGlow.toFixed(2)})`;
+    g.fillRect(79, 19, 22, 7);
+    g.fillStyle = "#0b1a12";
+    g.font = "bold 6px monospace";
+    g.textAlign = "center";
+    g.fillText("EXIT", 90, 25);
+
+    // 쓰러진 소년의 미세한 호흡 모션
+    const breathY = reduced ? 0 : Math.round(Math.sin(t * 3.0));
+    g.fillStyle = tubeOn ? "#293d5c" : "#152030";
+    g.fillRect(78, 78 + breathY, 22, 14);
+    g.fillStyle = tubeOn ? "#e8bfa5" : "#7d6658";
+    g.fillRect(83, 68 + breathY, 12, 10);
+
+    // 벽면의 붉은 긁힌 자국 (조명 깜빡일 때 선명해짐)
+    g.fillStyle = tubeOn ? "#F09BA8" : "#6e2c39";
+    for (let i = 0; i < 6; i++) {
+      g.fillRect(16 + i * 4, 52 + (i % 2) * 2, 2, 18);
+    }
+    g.textAlign = "left";
+  } else if (artType === "knock_door") {
+    // 3박자 노크 cycle (3.2초 주기)
+    const cycle = t % 3.2;
+    const knockTimes = [0.35, 0.72, 1.09];
+    let knockPulse = 0;
+
+    knockTimes.forEach((kt, idx) => {
+      const diff = cycle - kt;
+      if (diff >= 0 && diff < 0.28) {
+        knockPulse = Math.max(knockPulse, 1 - diff / 0.28);
+        triggerSceneCue(`knock_${idx}`, () => playSfx("knock"));
+      }
+    });
+
+    const shakeX = (!reduced && knockPulse > 0) ? Math.round((Math.random() - 0.5) * 4 * knockPulse) : 0;
+    const shakeY = (!reduced && knockPulse > 0) ? Math.round((Math.random() - 0.5) * 3 * knockPulse) : 0;
+
+    g.save();
+    g.translate(shakeX, shakeY);
+
+    // 1304호 철문 & 문틀
+    g.fillStyle = "#18131c";
+    g.fillRect(58, 12, 64, 102);
+    g.fillStyle = "#29212e";
+    g.fillRect(62, 16, 56, 96);
+    g.strokeStyle = "#F2D28B";
+    g.lineWidth = 1.5;
+    g.strokeRect(62, 16, 56, 96);
+
+    // 문패 1304 & 손잡이
+    g.fillStyle = "#F2D28B";
+    g.font = "bold 12px monospace";
+    g.textAlign = "center";
+    g.fillText("1304", 90, 34);
+    g.fillRect(108, 64, 4, 8);
+
+    // 문틈 아래 붉은 빛
+    const slitAlpha = 0.35 + knockPulse * 0.55;
+    g.fillStyle = `rgba(240, 155, 168, ${slitAlpha.toFixed(2)})`;
+    g.fillRect(60, 111, 60, 3);
+
+    // 확산되는 붉은 노크 파동 링
+    knockTimes.forEach(kt => {
+      const age = cycle - kt;
+      if (age >= 0 && age < 1.1) {
+        const radius = 8 + age * 34;
+        const alpha = Math.max(0, (1 - age / 1.1) * 0.85);
+        g.strokeStyle = `rgba(240, 155, 168, ${alpha.toFixed(2)})`;
+        g.lineWidth = 1.6;
+        g.beginPath();
+        g.arc(90, 62, radius, 0, Math.PI * 2);
+        g.stroke();
+      }
+    });
+
+    g.restore();
+    g.textAlign = "left";
+  } else if (artType === "memory_rescue") {
+    g.fillStyle = "#1a1624";
+    g.fillRect(0, 0, W, H);
+
+    // 비상구 불빛
+    const exitPulse = reduced ? 0.9 : (0.75 + 0.25 * Math.sin(t * 5));
+    g.fillStyle = `rgba(156, 224, 184, ${exitPulse.toFixed(2)})`;
+    g.fillRect(74, 8, 32, 8);
+
+    // 15세 소년 강현우 실루엣
+    const bob = reduced ? 0 : Math.round(Math.sin(t * 2.5));
+    g.fillStyle = "#2b4263";
+    g.fillRect(77, 44 + bob, 26, 24);
+    g.fillStyle = "#f2cbb0";
+    g.fillRect(81, 25 + bob, 18, 17);
+    g.fillStyle = "#161821";
+    g.fillRect(80, 22 + bob, 20, 6);
+
+    // 하단 수사 기록 복원 플레이트
+    g.fillStyle = "#0f1422";
+    g.fillRect(16, 74, 148, 38);
     g.strokeStyle = "#8FC9FF";
     g.lineWidth = 1.5;
-    g.strokeRect(18, 70, 124, 32);
+    g.strokeRect(16, 74, 148, 38);
 
     g.font = "bold 9px monospace";
     g.textAlign = "center";
     g.fillStyle = "#9aa3bd";
-    g.fillText("1985 생존 소년 [□□□]", 80, 82);
-    g.fillStyle = "#8FC9FF";
+    g.fillText("1985 생존 소년 [□□□]", 90, 88);
+
+    // 1.1초 동안 글리치 후 [강 현 우 (15세)] 확정
+    const revealDone = reduced || t >= 1.1;
+    const glitchPool = ["▶ 강 □ 우 (15세)", "▶ □ 현 □ (15세)", "▶ 강 현 □ (15세)", "▶ # % & (15세)"];
+    const labelText = revealDone
+      ? "▶ 강 현 우 (15세)"
+      : glitchPool[Math.floor(t * 16) % glitchPool.length];
+
+    g.fillStyle = revealDone ? "#8FC9FF" : "#F09BA8";
     g.font = "bold 11px monospace";
-    g.fillText("▶ 강 현 우 (15세)", 80, 96);
+    g.fillText(labelText, 90, 104);
     g.textAlign = "left";
   } else if (artType === "memory_yoonseo") {
-    g.fillStyle = "#1a1726"; g.fillRect(0, 0, W, H);
-    g.strokeStyle = "#8FC9FF"; g.strokeRect(46, 18, 68, 74);
-    g.fillStyle = "#dce3ed"; g.fillRect(68, 54, 24, 34);
-    g.fillStyle = "#f5e8ea"; g.fillRect(71, 35, 18, 18);
-    g.fillStyle = "#14131a"; g.fillRect(68, 29, 24, 9);
-    g.fillStyle = "#8FC9FF"; g.font = "bold 10px monospace"; g.textAlign = "center";
-    g.fillText("1304호 · 윤서", 80, 102);
+    g.fillStyle = "#181526";
+    g.fillRect(0, 0, W, H);
+
+    // 달빛이 비치는 창문 & 흔들리는 커튼
+    g.strokeStyle = "#8FC9FF";
+    g.lineWidth = 1.5;
+    g.strokeRect(52, 16, 76, 80);
+
+    const sway = reduced ? 0 : Math.round(Math.sin(t * 2.2) * 3);
+    g.fillStyle = "rgba(143, 201, 255, 0.14)";
+    g.fillRect(54, 18, 72, 76);
+
+    // 윤서 실루엣
+    const bob = reduced ? 0 : Math.round(Math.sin(t * 2.6));
+    g.fillStyle = "#dce3ed";
+    g.fillRect(77, 56 + bob, 26, 36);
+    g.fillStyle = "#f5e8ea";
+    g.fillRect(80, 36 + bob, 20, 19);
+    g.fillStyle = "#14131a";
+    g.fillRect(77, 29 + bob, 26, 10);
+
+    // 커튼
+    g.fillStyle = "#2c344d";
+    g.fillRect(53, 17, 12 + sway, 78);
+    g.fillRect(115 - sway, 17, 12 + sway, 78);
+
+    g.fillStyle = "#8FC9FF";
+    g.font = "bold 10px monospace";
+    g.textAlign = "center";
+    g.fillText("1304호 · 윤서", 90, 112);
     g.textAlign = "left";
   } else {
-    g.fillStyle = "#161b29"; g.fillRect(0, 0, W, H);
-    g.fillStyle = "#2b4263"; g.fillRect(62, 52, 36, 46);
-    g.fillStyle = "#8FC9FF"; g.fillRect(68, 54, 24, 34);
-    g.fillStyle = "#f2cbb0"; g.fillRect(67, 24, 26, 26);
-    g.fillStyle = "#161821"; g.fillRect(65, 16, 30, 12);
-    g.fillStyle = "#F2D28B"; g.font = "bold 11px monospace"; g.textAlign = "center";
-    g.fillText("23:47", 130, 26);
+    // PROLOGUE 04: detective_arrive (로비 현관문 그림자 & 23:47 정지 시계)
+    g.fillStyle = "#141926";
+    g.fillRect(0, 0, W, H);
+
+    // 현관문이 닫히며 드리워지는 그림자 슬라이드
+    const doorClose = reduced ? 1 : Math.min(1, t / 0.85);
+    if (doorClose >= 0.95) {
+      triggerSceneCue("lobby_door", () => playSfx("door"));
+    }
+    g.fillStyle = "rgba(5, 7, 13, 0.72)";
+    g.fillRect(0, 0, Math.round(52 * doorClose), H);
+
+    // 강현우 실루엣 & 코트 깃 흔들림
+    const coatFlutter = reduced ? 0 : Math.round(Math.sin(t * 4.5));
+    g.fillStyle = "#2b4263";
+    g.fillRect(70 - coatFlutter, 56, 40 + coatFlutter * 2, 54);
+    g.fillStyle = "#8FC9FF";
+    g.fillRect(78, 58, 24, 38);
+    g.fillStyle = "#f2cbb0";
+    g.fillRect(76, 26, 28, 28);
+    g.fillStyle = "#161821";
+    g.fillRect(74, 18, 32, 12);
+
+    // 로비 벽시계: 23:45 -> 23:46 -> 23:47에서 정지!
+    let clockStr = "23:47";
+    let stopped = true;
+    if (!reduced && t < 1.3) {
+      stopped = false;
+      if (t < 0.65) {
+        clockStr = "23:45";
+        triggerSceneCue("tick_1", () => playSfx("clock_tick"));
+      } else {
+        clockStr = "23:46";
+        triggerSceneCue("tick_2", () => playSfx("clock_tick"));
+      }
+    } else {
+      triggerSceneCue("clock_freeze", () => playSfx("clock_stop"));
+    }
+
+    g.fillStyle = "#0b0e17";
+    g.fillRect(124, 14, 48, 22);
+    g.strokeStyle = stopped ? "#F09BA8" : "#F2D28B";
+    g.lineWidth = 1.5;
+    g.strokeRect(124, 14, 48, 22);
+
+    g.fillStyle = stopped ? "#F09BA8" : "#F2D28B";
+    g.font = "bold 11px monospace";
+    g.textAlign = "center";
+    g.fillText(clockStr, 148, 29);
     g.textAlign = "left";
   }
+
+  // 레트로 CRT 스캔라인 마감
+  g.fillStyle = "rgba(0, 0, 0, 0.22)";
+  for (let y = 0; y < H; y += 3) {
+    g.fillRect(0, y, W, 1);
+  }
+  g.restore();
 }
 
 export function renderTutorialBanner() {

@@ -1,5 +1,5 @@
 /* =========================================================================
-   0-1. 게임 상수 및 밸런스 설정 모듈 (Phase 3 - v1.5.0)
+   0-1. 게임 상수 및 밸런스 설정 모듈 (v1.6.0)
    ========================================================================= */
 export const TILE = 40;
 export const FLICKER_DURATION = 10.0;
@@ -57,5 +57,7 @@ export const SANITY_CONFIG = Object.freeze({
 
 export const UI_CONFIG = Object.freeze({
   MAX_LOG_ENTRIES: 35,
-  PREFS_STORAGE_KEY: "visitorPrefs"
+  PREFS_STORAGE_KEY: "visitorPrefs",
+  TYPEWRITER_CHARS_PER_SEC: 52,
+  PROLOGUE_CHARS_PER_SEC: 44
 });

@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>13번째 방문자 (The 13th Visitor) v1.5.0</title>
+  <title>13번째 방문자 (The 13th Visitor) v1.6.0</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23121421'/%3E%3Ctext x='16' y='22' font-family='monospace' font-size='16' font-weight='bold' fill='%23F2D28B' text-anchor='middle'%3E13%3C/text%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="style.css?v=1.5.0" />
+  <link rel="stylesheet" href="style.css?v=1.6.0" />
 </head>
 <body>
   <div id="title-overlay">
     <div class="title-card">
-      <div class="title-badge">16-BIT KOREAN OCCULT MYSTERY RPG · <span data-app-version>v1.5.0</span></div>
+      <div class="title-badge">16-BIT KOREAN OCCULT MYSTERY RPG · <span data-app-version>v1.6.0</span></div>
       <h1 class="game-title">13번째 방문자</h1>
       <p class="game-subtitle">
         1985년 10월 13일 밤 11시 47분, 준공 도면에 없는 은하아파트 13층에서 사라진 일가족.<br />
@@ -41,8 +41,8 @@
       </div>
       <div class="prologue-title" id="prologue-title">도면에 존재하지 않는 층</div>
       <div class="prologue-body-row">
-        <canvas id="prologue-art-canvas" width="160" height="110"></canvas>
-        <div id="prologue-text"></div>
+        <canvas id="prologue-art-canvas" width="180" height="124"></canvas>
+        <div id="prologue-text" aria-live="polite"></div>
       </div>
       <div class="prologue-actions">
         <button class="prologue-btn" id="btn-prologue-skip">건너뛰기 [ESC]</button>
@@ -60,8 +60,8 @@
       <div class="prologue-title" id="flashback-title">기억의 조각</div>
       <div id="flashback-reveal-banner" class="flashback-reveal-banner" style="display:none;"></div>
       <div class="prologue-body-row">
-        <canvas id="flashback-art-canvas" width="160" height="110"></canvas>
-        <div id="flashback-text"></div>
+        <canvas id="flashback-art-canvas" width="180" height="124"></canvas>
+        <div id="flashback-text" aria-live="polite"></div>
       </div>
       <div class="prologue-actions" style="justify-content:flex-end;">
         <button class="prologue-btn prologue-btn-primary" id="btn-flashback-close">기억을 새기고 수사 계속 ▶ [Space]</button>
@@ -75,7 +75,7 @@
 
       <div class="hud-top-bar">
         <div class="hud-stats">
-          <span class="version-pill" data-app-version>v1.5.0</span>
+          <span class="version-pill" data-app-version>v1.6.0</span>
           <span id="hud-location" class="hud-loc">은하아파트 · 1층 복도</span>
           <div class="mini-meter" title="정신력">
             <span>정신력</span>
@@ -175,6 +175,6 @@
     </div>
   </aside>
 
-  <script type="module" src="js/main.js?v=1.5.0"></script>
+  <script type="module" src="js/main.js?v=1.6.0"></script>
 </body>
 </html>
