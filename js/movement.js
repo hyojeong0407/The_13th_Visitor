@@ -212,6 +212,7 @@ export function handleDoorTransition(door, hooks) {
 
   const prevRoom = state.currentRoom;
   state.currentRoom = door.to;
+  state.roomFadeAlpha = state.prefs.reducedMotion ? 0 : 0.85;
   state.player.x = door.tx;
   state.player.y = door.ty;
   syncPlayerPixelToGrid();
@@ -287,6 +288,7 @@ export function openElevatorMenu(hooks) {
     label: dest.label,
     action: () => {
       state.currentRoom = dest.room;
+      state.roomFadeAlpha = state.prefs.reducedMotion ? 0 : 0.85;
       state.lightState = "on";
       state.player.x = dest.x;
       state.player.y = dest.y;

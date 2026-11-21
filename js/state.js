@@ -132,6 +132,7 @@ export const state = {
   bumpCooldown: 0,
   elapsedTime: 0,
   screenShake: 0,
+  roomFadeAlpha: 0,
   hudDirty: true
 };
 
@@ -328,6 +329,7 @@ export function applyLoadedData(rawData, findNearestWalkableFn, snapCameraFn) {
   state.hallucination = { fakeClue: null, timer: 0 };
   state.flickerTimer = 0;
   state.screenShake = 0;
+  state.roomFadeAlpha = 0;
   state.notebookOpen = false;
   setGhostState(GHOST_STATE.IDLE);
   state.lightState = state.currentRoom === "1304호 숨겨진 방" ? "out" : "on";
