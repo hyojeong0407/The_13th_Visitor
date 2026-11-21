@@ -1,49 +1,70 @@
-# 13번째 방문자 (The 13th Visitor) · v1.7.0
+# 13번째 방문자 (The 13th Visitor) · v1.8.0
 
 **1985년 10월 13일 밤 11시 47분**, 서울 외곽 은하아파트에서 사라진 일가족과 도면에 존재하지 않는 **13층 1304호**의 미스터리를 파헤치는 **16비트 레트로 한국 오컬트 추리 RPG**입니다.
 
 ---
 
-## v1.7.0 주요 업데이트 — 데이터 주도화 & 모듈 분리 · Space 액션 통합
+## v1.8.0 주요 업데이트 — 테스트·코드 품질 인프라 & 오프스크린 스프라이트 캐시
 
-1. **주 액션 키 `Space` 단일 통합 (`js/input.js`, `index.html`, `js/data.js`, `js/main.js`)**
-   - 사물·인물 조사, 대화 진행, 대사 타자기 스킵, 프롤로그/기억 회상 진행, 은신 중 숨 참기 액션을 **`Space`** 키 하나로 통합했습니다.
-   - 타이틀 조작 안내, 컨트롤 바 버튼(`조사 / 대화 [Space]`), 튜토리얼 가이드를 모두 `Space` 기준으로 일원화했습니다.
-2. **`main.js` 모듈 분리 아키텍처 개편 (`js/input.js`, `js/movement.js`, `js/investigation.js`, `js/main.js`)**
-   - 비대하던 단일 진입점을 **입력 라우터(`input.js`)**, **이동·카메라·구역 전환(`movement.js`)**, **추리·회상·NPC 대화·엔딩 판정(`investigation.js`)**, **메인 루프 및 생명주기(`main.js`)** 4개 모듈로 분리해 유지보수성과 테스트 용이성을 높였습니다.
-3. **좌표·추격 이벤트·NPC 대화 트리 데이터화 (`js/data.js`, `js/dialogueData.js`)**
-   - 엘리베이터 층별 복귀 좌표(`ELEVATOR_DESTINATIONS`), 추격자 경고 이벤트 4종(`GHOST_EVENTS`), 특수 인터랙션 타일(`specialTiles`)을 데이터 테이블로 이전했습니다.
-   - 박만식·한미정·윤서의 분기 대화와 진실/플래그 조건을 `js/dialogueData.js`의 선언형 데이터(`NPC_DIALOGUES`)로 분리했습니다.
-4. **Web Audio 프로시저럴 노이즈 합성 고도화 (`js/audio.js`)**
-   - **입체 3연타 노크음(`playLayeredKnock`)**: 저역 문판 멤브레인 충격음 + 너클 어택 밴드패스 노이즈 + 문틀 공진 잔향을 레이어링했습니다.
-   - **형광등 험 노이즈(`updateFluorescentHum`)**: `60Hz`·`120Hz` 교류 전원 험 오실레이터와 고주파 스파크 크래클 노이즈를 `flicker` 상태와 실시간 연동했습니다.
-   - **화자별 보이스 블립(`playVoiceBlip`)**: 캐릭터 고유 포먼트에 자음 노이즈 어택과 문장부호(`?`, `!`, `.`) 기반 피치 억양 변화를 추가했습니다.
+1. **오프스크린 스프라이트 캐시 파이프라인 도입 (`js/spriteCache.js`, `js/render.js`)**
+   - 정적 바닥 타일·외벽(`room-base`), 가구(`furn:*`), 은신처(`hide:*`), 플레이어 4방향 보행 프레임(`hero:*`), NPC 대기 프레임(`npc:*`), 추격자 실루엣(`ghost:body`)을 오프스크린 캔버스에 1회 베이크(bake) 후 `drawImage`로 재사용하도록 전환했습니다.
+   - `imageSmoothingEnabled = false` 픽셀 보존과 헤드리스 환경 폴백을 내장해 `v1.9.x` 캐릭터·배경 픽셀 아트 업그레이드를 프레임 저하 없이 수용할 수 있습니다.
+2. **Vitest 단위 테스트 스위트 구축 (`tests/*.test.js`)**
+   - `tests/data.test.js`: 단서 12종, 조합 7종, 방·문·숨김처 좌표, NPC·엘리베이터·이벤트 데이터 무결성 검증
+   - `tests/state.test.js`: 모드 전이 시 입력 초기화, 1304호 잠금 해제 판정, 구버전 세이브 마이그레이션 및 화이트리스트 필터링 검증
+   - `tests/ghost.test.js`: 장애물 판정, 최근접 워크어블 타일 탐색, 정수 인덱스 BFS 우회 경로 및 은신처 재사용 페널티 검증
+   - `tests/ui_and_cache.test.js`: 중첩 대괄호 하이라이트 파서, 타자기 상태 관리, 오프스크린 스프라이트 캐시 히트·초기화 검증
+3. **ESLint / Prettier & 캐시 버스팅 정비 (`package.json`, `eslint.config.js`, `.prettierrc`, `version.js`, `index.html`)**
+   - GitHub Pages 및 로컬 웹 서버에서 별도 빌드 없이 그대로 실행되는 구조를 유지하면서 `npm test`, `npm run lint`, `npm run format` 개발 워크플로를 추가했습니다.
+   - `version.js`(`APP_VERSION = "1.8.0"`)와 `index.html` 쿼리스트링(`?v=1.8.0`)을 동기화했습니다.
 
 ---
 
-## 프로젝트 구조 (17개 파일)
+## 프로젝트 구조
 
 ```text
 The_13th_Visitor/
 ├── README.md              # 버전 히스토리, 프로젝트 구조 및 개발 로드맵
 ├── index.html             # 타이틀, 프롤로그/회상 오버레이, HUD, 수사 수첩, D-Pad 마크업
 ├── style.css              # 16비트 레트로 다크 테마, 타자기 커서, 하이라이트 스타일
-├── version.js             # 단일 버전 상수 (APP_VERSION = "1.7.0")
-└── js/
-    ├── storage.js         # localStorage 예외 및 사생활 보호 모드 메모리 폴백 래퍼
-    ├── config.js          # 이동/추격/숨참기/정신력/타자기 밸런스 상수 정의
-    ├── data.js            # 단서, 조합, 소품, 방, 특수 좌표, 추격 이벤트, NPC 기본 정보
-    ├── dialogueData.js    # NPC 대화 트리 및 분기 조건 선언형 데이터
-    ├── audio.js           # Web Audio 앰비언트 BGM, 3D 노크음, 형광등 험 노이즈, 보이스 블립
-    ├── state.js           # GAME_MODE/GHOST_STATE FSM, 세이브 스키마 검증 및 마이그레이션
-    ├── ghost.js           # 13번째 방문자 정수 인덱스 BFS AI, 숨 참기, 환각 시스템
-    ├── render.js          # 16비트 캔버스 타일·가구·조명 렌더링 및 감소 모션 처리
-    ├── ui.js              # 타자기 엔진, 하이라이트 파서, 포트레이트, 컷신 아트, 수첩 UI
-    ├── movement.js        # 플레이어 이동, 카메라 추적, 문/엘리베이터 전환, 은신, 구역 이벤트
-    ├── investigation.js   # 단서 수집/조합, 기억 회상, NPC 대화 실행기, 거울/엔딩 판정
-    ├── input.js           # Space 통합 액션 라우터, 키보드/D-Pad/HUD 이벤트 바인딩
-    └── main.js            # 메인 루프 및 타이틀/프롤로그/튜토리얼/세이브 생명주기 진입점
+├── version.js             # 단일 버전 상수 (APP_VERSION = "1.8.0")
+├── package.json           # Vitest · ESLint · Prettier 스크립트 및 개발 의존성
+├── eslint.config.js       # ES2022 모듈 정적 분석 규칙
+├── .prettierrc            # 코드 포맷팅 규칙
+├── .gitignore             # node_modules 및 빌드 산출물 제외
+├── js/
+│   ├── storage.js         # localStorage 예외 및 사생활 보호 모드 메모리 폴백 래퍼
+│   ├── config.js          # 이동/추격/숨참기/정신력/타자기 밸런스 상수 정의
+│   ├── data.js            # 단서, 조합, 소품, 방, NPC, 프롤로그/회상/튜토리얼 데이터
+│   ├── dialogueData.js    # 박만식·한미정·윤서 분기 대화 및 조건 데이터
+│   ├── audio.js           # Web Audio API 앰비언트 BGM, 입체 노크음, 형광등 험 노이즈, 보이스 블립
+│   ├── state.js           # GAME_MODE/GHOST_STATE FSM, 세이브 스키마 검증 및 마이그레이션
+│   ├── ghost.js           # 13번째 방문자 정수 인덱스 BFS AI, 숨 참기, 환각 시스템
+│   ├── spriteCache.js     # 오프스크린 캔버스 스프라이트 베이크 및 캐시 관리 모듈
+│   ├── render.js          # 16비트 캔버스 캐시 기반 타일·가구·캐릭터·조명 렌더링
+│   ├── ui.js              # 타자기 엔진, 하이라이트 파서, 포트레이트, 컷신 아트, 수첩 UI
+│   ├── movement.js        # 플레이어 이동, 카메라 추적, 구역 전환, 은신 판정
+│   ├── investigation.js   # 사물 조사, 단서 조합 추리, 기억 회상, 엔딩 판정
+│   ├── input.js           # Space 통합 액션 및 키보드/터치 입력 라우터
+│   └── main.js            # 메인 루프 및 모듈 간 의존성 조립
+└── tests/
+    ├── data.test.js       # 데이터 및 맵 좌표 무결성 테스트
+    ├── state.test.js      # 상태 머신 및 세이브 마이그레이션 테스트
+    ├── ghost.test.js      # BFS 경로 탐색 및 숨 참기 밸런스 테스트
+    └── ui_and_cache.test.js # 하이라이트 파서, 타자기, 스프라이트 캐시 테스트
 ```
+
+---
+
+## 버전 로드맵 (v1.8.0 → v2.0.0)
+
+| 버전 | 핵심 목표 | 주요 포함 항목 |
+| :--- | :--- | :--- |
+| **v1.6.0** | 버그 제로 & 입력·세이브 무결성 | 엔딩/게임오버 키보드 복구, 하이라이트 파서 개편, 세이브 스키마 검증, 대사 타자기 연출 및 스킵 |
+| **v1.7.0** | 데이터 주도화 & 모듈 분리 | `main.js` 4분할 모듈화, 대화·이벤트 데이터화, `Space` 통합 액션, Web Audio 노이즈 합성 고도화 |
+| **v1.8.0 (현재)** | 테스트 & 빌드 인프라 구축 | Vitest 단위 테스트, ESLint/Prettier, 캐시 버스팅 정비, 오프스크린 스프라이트 캐시 파이프라인 |
+| **v1.9.x** | 시청각·캐릭터 전면 리뉴얼 (v2.0 기반) | 포트레이트 표정 분기·눈 깜빡임, 추격자 기괴 연출, 4방향 필드 도트 및 바닥·가구 픽셀 아트 교체 |
+| **v2.0.0** | 정체성 완성 (메이저 릴리스) | 23:47~24:00 시간 루프 & 13노크 시스템, 진실 연동 공간 변이(P.T. 연출), 3단서 복합 조합, 전용 엔딩 일러스트 |
 
 ---
 
@@ -58,11 +79,15 @@ The_13th_Visitor/
 
 ---
 
-## 실행 방법
-
-ES 모듈(`type="module"`) 구조를 사용하므로 로컬 웹 서버를 통해 실행하세요.
+## 실행 및 테스트 방법
 
 ```bash
+# 1. 게임 실행 (ES 모듈 로컬 웹 서버)
 python -m http.server 8000
 # 브라우저에서 http://localhost:8000 접속
+
+# 2. 단위 테스트 및 린트 실행 (Node.js 환경)
+npm install
+npm test
+npm run lint
 ```

@@ -1,9 +1,10 @@
 /* =========================================================================
-   5. 16비트 픽셀 렌더링 엔진 (시간 기반 애니메이션 · 광과민/감소 모션 대응) (v1.7.0)
+   5. 16비트 픽셀 렌더링 엔진 (오프스크린 스프라이트 캐싱 · 감소 모션 대응) (v1.8.0)
    ========================================================================= */
 import { ROOMS, NPCS, PROPS, FIELD_ITEMS } from "./data.js";
 import { TILE, FLICKER_DURATION, SANITY_CONFIG } from "./config.js";
 import { state, GAME_MODE, GHOST_STATE } from "./state.js";
+import { getCachedSprite, drawCachedSprite } from "./spriteCache.js";
 
 const lightCanvas = document.createElement("canvas");
 const lctx = lightCanvas.getContext("2d");
@@ -36,53 +37,85 @@ export function updateVisualTimers(dt) {
   }
 }
 
+function getBakedRoomBase(roomName, r) {
+  const mapW = r.cols * TILE;
+  const mapH = r.rows * TILE;
+  const key = `room-base:${roomName}:${r.cols}x${r.rows}`;
+
+  return getCachedSprite(key, mapW, mapH, bctx => {
+    bctx.fillStyle = r.bg;
+    bctx.fillRect(0, 0, mapW, mapH);
+
+    for (let y = 1; y < r.rows - 1; y++) {
+      for (let x = 1; x < r.cols - 1; x++) {
+        bctx.fillStyle = (x + y) % 2 === 0 ? r.floorA : r.floorB;
+        bctx.fillRect(x * TILE, y * TILE, TILE, TILE);
+        bctx.strokeStyle = "rgba(255,255,255,0.03)";
+        bctx.strokeRect(x * TILE, y * TILE, TILE, TILE);
+      }
+    }
+
+    bctx.fillStyle = r.wall;
+    bctx.fillRect(0, 0, mapW, TILE);
+    bctx.fillRect(0, (r.rows - 1) * TILE, mapW, TILE);
+    bctx.fillRect(0, 0, TILE, mapH);
+    bctx.fillRect((r.cols - 1) * TILE, 0, TILE, mapH);
+  });
+}
+
 function drawDetailedFurniture(ctx, f) {
   const x = f.x * TILE;
   const y = f.y * TILE;
   const w = f.w * TILE;
   const h = f.h * TILE;
+  const animPhase = f.style === "cctv" ? (Math.floor(state.elapsedTime * 4) % 2) : 0;
+  const key = `furn:${f.label}:${w}x${h}:${f.color}:${f.style || "default"}:${animPhase}`;
 
-  ctx.fillStyle = "rgba(0,0,0,0.38)";
-  ctx.fillRect(x + 3, y + h - 2, w - 4, 5);
+  const sprite = getCachedSprite(key, w, h + 4, bctx => {
+    bctx.fillStyle = "rgba(0,0,0,0.38)";
+    bctx.fillRect(3, h - 2, w - 4, 5);
 
-  ctx.fillStyle = f.color;
-  ctx.fillRect(x + 2, y + 2, w - 4, h - 4);
-  ctx.fillStyle = "rgba(255,255,255,0.08)";
-  ctx.fillRect(x + 3, y + 3, w - 6, 4);
+    bctx.fillStyle = f.color;
+    bctx.fillRect(2, 2, w - 4, h - 4);
+    bctx.fillStyle = "rgba(255,255,255,0.08)";
+    bctx.fillRect(3, 3, w - 6, 4);
 
-  ctx.strokeStyle = "rgba(0,0,0,0.75)";
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(x + 2, y + 2, w - 4, h - 4);
+    bctx.strokeStyle = "rgba(0,0,0,0.75)";
+    bctx.lineWidth = 1.5;
+    bctx.strokeRect(2, 2, w - 4, h - 4);
 
-  if (f.style === "car") {
-    ctx.fillStyle = "#1c2633";
-    ctx.fillRect(x + 14, y + 8, w - 28, h - 16);
-    ctx.fillStyle = "#f2d28b";
-    ctx.fillRect(x + w - 7, y + 8, 4, 8);
-    ctx.fillRect(x + w - 7, y + h - 16, 4, 8);
-  } else if (f.style === "bed") {
-    ctx.fillStyle = "#d9d4e0";
-    ctx.fillRect(x + 6, y + 8, 18, h - 16);
-    ctx.fillStyle = "rgba(0,0,0,0.22)";
-    ctx.fillRect(x + 28, y + 4, 3, h - 8);
-  } else if (f.style === "cctv") {
-    ctx.fillStyle = (Math.floor(state.elapsedTime * 4) % 2 === 0) ? "#4f8c7a" : "#386659";
-    ctx.fillRect(x + 8, y + 6, 22, 16);
-    ctx.fillRect(x + 36, y + 6, 22, 16);
-  } else if (f.style === "mirror") {
-    ctx.fillStyle = "#9fb3c7";
-    ctx.fillRect(x + 6, y + 5, w - 12, h - 10);
-    ctx.fillStyle = "rgba(240, 155, 168, 0.35)";
-    ctx.fillRect(x + 12, y + 9, 14, 16);
-  }
+    if (f.style === "car") {
+      bctx.fillStyle = "#1c2633";
+      bctx.fillRect(14, 8, w - 28, h - 16);
+      bctx.fillStyle = "#f2d28b";
+      bctx.fillRect(w - 7, 8, 4, 8);
+      bctx.fillRect(w - 7, h - 16, 4, 8);
+    } else if (f.style === "bed") {
+      bctx.fillStyle = "#d9d4e0";
+      bctx.fillRect(6, 8, 18, h - 16);
+      bctx.fillStyle = "rgba(0,0,0,0.22)";
+      bctx.fillRect(28, 4, 3, h - 8);
+    } else if (f.style === "cctv") {
+      bctx.fillStyle = animPhase === 0 ? "#4f8c7a" : "#386659";
+      bctx.fillRect(8, 6, 22, 16);
+      bctx.fillRect(36, 6, 22, 16);
+    } else if (f.style === "mirror") {
+      bctx.fillStyle = "#9fb3c7";
+      bctx.fillRect(6, 5, w - 12, h - 10);
+      bctx.fillStyle = "rgba(240, 155, 168, 0.35)";
+      bctx.fillRect(12, 9, 14, 16);
+    }
 
-  ctx.font = "10px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillStyle = "#000";
-  ctx.fillText(f.label, x + w / 2 + 1, y + h / 2 + 4);
-  ctx.fillStyle = "#FFFFFF";
-  ctx.fillText(f.label, x + w / 2, y + h / 2 + 3);
-  ctx.textAlign = "left";
+    bctx.font = "10px sans-serif";
+    bctx.textAlign = "center";
+    bctx.fillStyle = "#000";
+    bctx.fillText(f.label, w / 2 + 1, h / 2 + 4);
+    bctx.fillStyle = "#FFFFFF";
+    bctx.fillText(f.label, w / 2, h / 2 + 3);
+    bctx.textAlign = "left";
+  });
+
+  drawCachedSprite(ctx, sprite, x, y);
 }
 
 function drawHidingSpot(ctx, s) {
@@ -90,23 +123,28 @@ function drawHidingSpot(ctx, s) {
   const y = s.y * TILE;
   const urgent = state.lightState === "flicker" && !state.isHiding;
   const used = state.hidingUseCount[s.id] || 0;
+  const key = `hide:${urgent ? 1 : 0}:${used >= 2 ? 2 : 0}`;
 
-  ctx.fillStyle = "rgba(0,0,0,0.38)";
-  ctx.fillRect(x + 4, y + TILE - 2, TILE - 6, 4);
+  const sprite = getCachedSprite(key, TILE, TILE + 4, bctx => {
+    bctx.fillStyle = "rgba(0,0,0,0.38)";
+    bctx.fillRect(4, TILE - 2, TILE - 6, 4);
 
-  ctx.fillStyle = urgent ? "#4d4327" : (used >= 2 ? "#4a3338" : "#3a4f48");
-  ctx.fillRect(x + 4, y + 4, TILE - 8, TILE - 8);
-  ctx.strokeStyle = urgent ? "#F2D28B" : (used >= 2 ? "#F09BA8" : "#8FC9FF");
-  ctx.lineWidth = urgent ? 2 : 1.2;
-  ctx.strokeRect(x + 4, y + 4, TILE - 8, TILE - 8);
+    bctx.fillStyle = urgent ? "#4d4327" : (used >= 2 ? "#4a3338" : "#3a4f48");
+    bctx.fillRect(4, 4, TILE - 8, TILE - 8);
+    bctx.strokeStyle = urgent ? "#F2D28B" : (used >= 2 ? "#F09BA8" : "#8FC9FF");
+    bctx.lineWidth = urgent ? 2 : 1.2;
+    bctx.strokeRect(4, 4, TILE - 8, TILE - 8);
 
-  ctx.font = "bold 9px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillStyle = "#000";
-  ctx.fillText("숨기[H]", x + 21, y + 24);
-  ctx.fillStyle = urgent ? "#F2D28B" : "#8FC9FF";
-  ctx.fillText("숨기[H]", x + 20, y + 23);
-  ctx.textAlign = "left";
+    bctx.font = "bold 9px sans-serif";
+    bctx.textAlign = "center";
+    bctx.fillStyle = "#000";
+    bctx.fillText("숨기[H]", 21, 24);
+    bctx.fillStyle = urgent ? "#F2D28B" : "#8FC9FF";
+    bctx.fillText("숨기[H]", 20, 23);
+    bctx.textAlign = "left";
+  });
+
+  drawCachedSprite(ctx, sprite, x, y);
 }
 
 function drawPixelHero(ctx, px, py, dir, moving, walkTimer, stepParity) {
@@ -120,128 +158,142 @@ function drawPixelHero(ctx, px, py, dir, moving, walkTimer, stepParity) {
     }
   }
 
-  ctx.fillStyle = "rgba(0,0,0,0.48)";
-  ctx.fillRect(px + 9, py + 33, 22, 5);
-  const hy = py + bobY;
+  const key = `hero:${dir}:${stride}:${bobY}`;
+  const sprite = getCachedSprite(key, TILE, TILE, bctx => {
+    bctx.fillStyle = "rgba(0,0,0,0.48)";
+    bctx.fillRect(9, 33, 22, 5);
+    const hy = bobY;
 
-  if (dir === "down" || dir === "up") {
-    const leftLegY = stride === -1 ? -2 : (stride === 1 ? 1 : 0);
-    const rightLegY = stride === 1 ? -2 : (stride === -1 ? 1 : 0);
+    if (dir === "down" || dir === "up") {
+      const leftLegY = stride === -1 ? -2 : (stride === 1 ? 1 : 0);
+      const rightLegY = stride === 1 ? -2 : (stride === -1 ? 1 : 0);
 
-    ctx.fillStyle = "#181d2b";
-    ctx.fillRect(px + 12, hy + 28 + leftLegY, 6, 7 - Math.max(0, leftLegY));
-    ctx.fillRect(px + 22, hy + 28 + rightLegY, 6, 7 - Math.max(0, rightLegY));
+      bctx.fillStyle = "#181d2b";
+      bctx.fillRect(12, hy + 28 + leftLegY, 6, 7 - Math.max(0, leftLegY));
+      bctx.fillRect(22, hy + 28 + rightLegY, 6, 7 - Math.max(0, rightLegY));
 
-    ctx.fillStyle = "#2b4263";
-    ctx.fillRect(px + 10, hy + 16, 20, 14);
-    ctx.fillStyle = "#233652";
-    ctx.fillRect(px + 7, hy + 17 - stride, 3, 10);
-    ctx.fillRect(px + 30, hy + 17 + stride, 3, 10);
+      bctx.fillStyle = "#2b4263";
+      bctx.fillRect(10, hy + 16, 20, 14);
+      bctx.fillStyle = "#233652";
+      bctx.fillRect(7, hy + 17 - stride, 3, 10);
+      bctx.fillRect(30, hy + 17 + stride, 3, 10);
 
-    if (dir === "down") {
-      ctx.fillStyle = "#8FC9FF";
-      ctx.fillRect(px + 13, hy + 17, 14, 11);
-      ctx.fillStyle = "#1b283d";
-      ctx.fillRect(px + 19, hy + 17, 2, 10);
+      if (dir === "down") {
+        bctx.fillStyle = "#8FC9FF";
+        bctx.fillRect(13, hy + 17, 14, 11);
+        bctx.fillStyle = "#1b283d";
+        bctx.fillRect(19, hy + 17, 2, 10);
 
-      ctx.fillStyle = "#f2cbb0";
-      ctx.fillRect(px + 12, hy + 5, 16, 11);
-      ctx.fillStyle = "#191b24";
-      ctx.fillRect(px + 11, hy + 3, 18, 4);
-      ctx.fillRect(px + 11, hy + 5, 2, 6);
-      ctx.fillRect(px + 27, hy + 5, 2, 6);
+        bctx.fillStyle = "#f2cbb0";
+        bctx.fillRect(12, hy + 5, 16, 11);
+        bctx.fillStyle = "#191b24";
+        bctx.fillRect(11, hy + 3, 18, 4);
+        bctx.fillRect(11, hy + 5, 2, 6);
+        bctx.fillRect(27, hy + 5, 2, 6);
 
-      ctx.fillStyle = "#0e121c";
-      ctx.fillRect(px + 15, hy + 9, 2, 3);
-      ctx.fillRect(px + 23, hy + 9, 2, 3);
+        bctx.fillStyle = "#0e121c";
+        bctx.fillRect(15, hy + 9, 2, 3);
+        bctx.fillRect(23, hy + 9, 2, 3);
+      } else {
+        bctx.fillStyle = "#1f314a";
+        bctx.fillRect(19, hy + 18, 2, 11);
+        bctx.fillStyle = "#191b24";
+        bctx.fillRect(11, hy + 3, 18, 13);
+      }
     } else {
-      ctx.fillStyle = "#1f314a";
-      ctx.fillRect(px + 19, hy + 18, 2, 11);
-      ctx.fillStyle = "#191b24";
-      ctx.fillRect(px + 11, hy + 3, 18, 13);
+      const isLeft = dir === "left";
+      const frontFootX = stride * 3;
+      const backFootX = -stride * 3;
+
+      bctx.fillStyle = "#121621";
+      bctx.fillRect(16 + backFootX, hy + 28, 6, 7);
+      bctx.fillStyle = "#1d2333";
+      bctx.fillRect(16 + frontFootX, hy + 28, 6, 7);
+
+      bctx.fillStyle = "#2b4263";
+      bctx.fillRect(12, hy + 16, 16, 14);
+      bctx.fillStyle = "#8FC9FF";
+      bctx.fillRect(isLeft ? 12 : 24, hy + 17, 4, 10);
+
+      bctx.fillStyle = "#22344f";
+      bctx.fillRect(17 - stride * 2, hy + 17, 5, 10);
+
+      bctx.fillStyle = "#f2cbb0";
+      bctx.fillRect(13, hy + 5, 14, 11);
+      bctx.fillStyle = "#191b24";
+      bctx.fillRect(12, hy + 3, 16, 4);
+      bctx.fillRect(isLeft ? 23 : 12, hy + 5, 5, 10);
+
+      bctx.fillStyle = "#0e121c";
+      bctx.fillRect(isLeft ? 15 : 23, hy + 9, 2, 3);
     }
-  } else {
-    const isLeft = dir === "left";
-    const frontFootX = stride * 3;
-    const backFootX = -stride * 3;
+  });
 
-    ctx.fillStyle = "#121621";
-    ctx.fillRect(px + 16 + backFootX, hy + 28, 6, 7);
-    ctx.fillStyle = "#1d2333";
-    ctx.fillRect(px + 16 + frontFootX, hy + 28, 6, 7);
-
-    ctx.fillStyle = "#2b4263";
-    ctx.fillRect(px + 12, hy + 16, 16, 14);
-    ctx.fillStyle = "#8FC9FF";
-    ctx.fillRect(isLeft ? px + 12 : px + 24, hy + 17, 4, 10);
-
-    ctx.fillStyle = "#22344f";
-    ctx.fillRect(px + 17 - stride * 2, hy + 17, 5, 10);
-
-    ctx.fillStyle = "#f2cbb0";
-    ctx.fillRect(px + 13, hy + 5, 14, 11);
-    ctx.fillStyle = "#191b24";
-    ctx.fillRect(px + 12, hy + 3, 16, 4);
-    ctx.fillRect(isLeft ? px + 23 : px + 12, hy + 5, 5, 10);
-
-    ctx.fillStyle = "#0e121c";
-    ctx.fillRect(isLeft ? px + 15 : px + 23, hy + 9, 2, 3);
-  }
+  drawCachedSprite(ctx, sprite, px, py);
 }
 
 function drawPixelNPC(ctx, npc) {
   const px = npc.x * TILE;
   const py = npc.y * TILE;
   const idleBob = state.prefs.reducedMotion ? 0 : (Math.floor(state.elapsedTime * 2.1) % 2);
+  const key = `npc:${npc.id}:${idleBob}`;
 
-  ctx.fillStyle = "rgba(0,0,0,0.45)";
-  ctx.fillRect(px + 9, py + 33, 22, 5);
+  const sprite = getCachedSprite(key, TILE, TILE, bctx => {
+    bctx.fillStyle = "rgba(0,0,0,0.45)";
+    bctx.fillRect(9, 33, 22, 5);
 
-  if (npc.id === "park") {
-    ctx.fillStyle = "#1c2624";
-    ctx.fillRect(px + 13, py + 29, 5, 6);
-    ctx.fillRect(px + 22, py + 29, 5, 6);
+    if (npc.id === "park") {
+      bctx.fillStyle = "#1c2624";
+      bctx.fillRect(13, 29, 5, 6);
+      bctx.fillRect(22, 29, 5, 6);
 
-    ctx.fillStyle = "#3c5954";
-    ctx.fillRect(px + 10, py + 16 + idleBob, 20, 14);
-    ctx.fillStyle = "#f2d28b";
-    ctx.fillRect(px + 13, py + 19 + idleBob, 4, 2);
+      bctx.fillStyle = "#3c5954";
+      bctx.fillRect(10, 16 + idleBob, 20, 14);
+      bctx.fillStyle = "#f2d28b";
+      bctx.fillRect(13, 19 + idleBob, 4, 2);
 
-    ctx.fillStyle = "#e0b89d";
-    ctx.fillRect(px + 12, py + 6 + idleBob, 16, 10);
-    ctx.fillStyle = "#263835";
-    ctx.fillRect(px + 10, py + 3 + idleBob, 20, 4);
-    ctx.fillStyle = "#111";
-    ctx.fillRect(px + 15, py + 10 + idleBob, 2, 2);
-    ctx.fillRect(px + 23, py + 10 + idleBob, 2, 2);
-  } else if (npc.id === "han") {
-    ctx.fillStyle = "#241b24";
-    ctx.fillRect(px + 13, py + 29, 5, 6);
-    ctx.fillRect(px + 22, py + 29, 5, 6);
+      bctx.fillStyle = "#e0b89d";
+      bctx.fillRect(12, 6 + idleBob, 16, 10);
+      bctx.fillStyle = "#263835";
+      bctx.fillRect(10, 3 + idleBob, 20, 4);
+      bctx.fillStyle = "#111";
+      bctx.fillRect(15, 10 + idleBob, 2, 2);
+      bctx.fillRect(23, 10 + idleBob, 2, 2);
+    } else if (npc.id === "han") {
+      bctx.fillStyle = "#241b24";
+      bctx.fillRect(13, 29, 5, 6);
+      bctx.fillRect(22, 29, 5, 6);
 
-    ctx.fillStyle = "#6e4b6b";
-    ctx.fillRect(px + 10, py + 16 + idleBob, 20, 14);
-    ctx.fillStyle = "#2b1d24";
-    ctx.fillRect(px + 10, py + 4 + idleBob, 20, 13);
-    ctx.fillStyle = "#f2cbb0";
-    ctx.fillRect(px + 13, py + 7 + idleBob, 14, 9);
-    ctx.fillStyle = "#111";
-    ctx.fillRect(px + 15, py + 10 + idleBob, 2, 2);
-    ctx.fillRect(px + 23, py + 10 + idleBob, 2, 2);
-  } else if (npc.id === "yoonseo") {
+      bctx.fillStyle = "#6e4b6b";
+      bctx.fillRect(10, 16 + idleBob, 20, 14);
+      bctx.fillStyle = "#2b1d24";
+      bctx.fillRect(10, 4 + idleBob, 20, 13);
+      bctx.fillStyle = "#f2cbb0";
+      bctx.fillRect(13, 7 + idleBob, 14, 9);
+      bctx.fillStyle = "#111";
+      bctx.fillRect(15, 10 + idleBob, 2, 2);
+      bctx.fillRect(23, 10 + idleBob, 2, 2);
+    } else if (npc.id === "yoonseo") {
+      bctx.fillStyle = "#e6ecf5";
+      bctx.fillRect(11, 17 + idleBob, 18, 15);
+      bctx.fillStyle = "#17161c";
+      bctx.fillRect(11, 5 + idleBob, 18, 14);
+      bctx.fillStyle = "#f5e6e8";
+      bctx.fillRect(14, 8 + idleBob, 12, 8);
+      bctx.fillStyle = "#3b1820";
+      bctx.fillRect(16, 11 + idleBob, 2, 2);
+      bctx.fillRect(22, 11 + idleBob, 2, 2);
+    }
+  });
+
+  if (npc.id === "yoonseo") {
     const flicker = state.prefs.reducedMotion ? 0.85 : (0.75 + Math.sin(state.elapsedTime * 9.0) * 0.2);
     ctx.save();
     ctx.globalAlpha = flicker;
-    ctx.fillStyle = "#e6ecf5";
-    ctx.fillRect(px + 11, py + 17 + idleBob, 18, 15);
-    ctx.fillStyle = "#17161c";
-    ctx.fillRect(px + 11, py + 5 + idleBob, 18, 14);
-    ctx.fillStyle = "#f5e6e8";
-    ctx.fillRect(px + 14, py + 8 + idleBob, 12, 8);
-    ctx.fillStyle = "#3b1820";
-    ctx.fillRect(px + 16, py + 11 + idleBob, 2, 2);
-    ctx.fillRect(px + 22, py + 11 + idleBob, 2, 2);
+    drawCachedSprite(ctx, sprite, px, py);
     ctx.restore();
+  } else {
+    drawCachedSprite(ctx, sprite, px, py);
   }
 
   ctx.font = "bold 11px sans-serif";
@@ -255,23 +307,25 @@ function drawPixelNPC(ctx, npc) {
 
 function drawPixelGhost(ctx, px, py) {
   const floatY = state.prefs.reducedMotion ? 0 : Math.sin(state.elapsedTime * 12.0) * 3;
+  const sprite = getCachedSprite("ghost:body", 64, 64, bctx => {
+    bctx.fillStyle = "rgba(240, 155, 168, 0.28)";
+    bctx.beginPath();
+    bctx.arc(32, 32, 26, 0, Math.PI * 2);
+    bctx.fill();
+
+    bctx.fillStyle = "#1a0b10";
+    bctx.fillRect(21, 18, 22, 28);
+    bctx.fillStyle = "#4a1522";
+    bctx.fillRect(23, 28, 18, 16);
+
+    bctx.fillStyle = "#F09BA8";
+    bctx.fillRect(26, 23, 4, 3);
+    bctx.fillRect(34, 23, 4, 3);
+  });
+
   ctx.save();
   ctx.globalAlpha = state.ghost.entryDelay > 0 ? 0.55 : 0.94;
-
-  ctx.fillStyle = "rgba(240, 155, 168, 0.28)";
-  ctx.beginPath();
-  ctx.arc(px + 20, py + 20 + floatY, 26, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = "#1a0b10";
-  ctx.fillRect(px + 9, py + 6 + floatY, 22, 28);
-  ctx.fillStyle = "#4a1522";
-  ctx.fillRect(px + 11, py + 16 + floatY, 18, 16);
-
-  ctx.fillStyle = "#F09BA8";
-  ctx.fillRect(px + 14, py + 11 + floatY, 4, 3);
-  ctx.fillRect(px + 22, py + 11 + floatY, 4, 3);
-
+  drawCachedSprite(ctx, sprite, px - 12, py - 12 + floatY);
   ctx.restore();
 }
 
@@ -328,6 +382,7 @@ function renderRoomLightingOverlay(ctx, canvas, screenPx, screenPy) {
   const sanityFactor = state.sanity <= 30
     ? 0.68
     : (state.sanity <= SANITY_CONFIG.LOW_VISION_THRESHOLD ? 0.84 : 1.0);
+
   const roomInfo = ROOMS[state.currentRoom];
   const isCursed = roomInfo?.theme === "cursed";
 
@@ -458,9 +513,6 @@ export function renderGame(ctx, canvas, getBestInteractTargetFn) {
   const r = ROOMS[state.currentRoom];
   if (!r) return;
 
-  const mapW = r.cols * TILE;
-  const mapH = r.rows * TILE;
-
   ctx.save();
   ctx.fillStyle = "#06070c";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -474,23 +526,7 @@ export function renderGame(ctx, canvas, getBestInteractTargetFn) {
   ctx.save();
   ctx.translate(-Math.round(state.camera.x), -Math.round(state.camera.y));
 
-  ctx.fillStyle = r.bg;
-  ctx.fillRect(0, 0, mapW, mapH);
-
-  for (let y = 1; y < r.rows - 1; y++) {
-    for (let x = 1; x < r.cols - 1; x++) {
-      ctx.fillStyle = (x + y) % 2 === 0 ? r.floorA : r.floorB;
-      ctx.fillRect(x * TILE, y * TILE, TILE, TILE);
-      ctx.strokeStyle = "rgba(255,255,255,0.03)";
-      ctx.strokeRect(x * TILE, y * TILE, TILE, TILE);
-    }
-  }
-
-  ctx.fillStyle = r.wall;
-  ctx.fillRect(0, 0, mapW, TILE);
-  ctx.fillRect(0, (r.rows - 1) * TILE, mapW, TILE);
-  ctx.fillRect(0, 0, TILE, mapH);
-  ctx.fillRect((r.cols - 1) * TILE, 0, TILE, mapH);
+  drawCachedSprite(ctx, getBakedRoomBase(state.currentRoom, r), 0, 0);
 
   r.doors.forEach(d => {
     if (d.secret && !state.flags.secretOpen) return;

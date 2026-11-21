@@ -1,0 +1,21 @@
+{
+  "name": "the-13th-visitor",
+  "version": "1.8.0",
+  "private": true,
+  "type": "module",
+  "description": "13번째 방문자 (The 13th Visitor) - 16비트 레트로 한국 오컬트 추리 RPG",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint js version.js tests",
+    "format": "prettier --write \"js/**/*.js\" \"tests/**/*.js\" version.js index.html style.css",
+    "format:check": "prettier --check \"js/**/*.js\" \"tests/**/*.js\" version.js"
+  },
+  "devDependencies": {
+    "eslint": "^9.15.0",
+    "globals": "^15.12.0",
+    "jsdom": "^25.0.1",
+    "prettier": "^3.4.2",
+    "vitest": "^2.1.8"
+  }
+}
