@@ -1,6 +1,6 @@
 /* =========================================================================
-   1. 게임 데이터 (단서, 조합, 아이템, 소품, 방, NPC, 프롤로그/회상/튜토리얼)
-   Phase 3 (v1.5.0) — 서사 반전 보호 & 추리 코어 루프 고도화
+   1. 게임 데이터 (단서, 조합, 아이템, 소품, 방, 특수 좌표, 추격 이벤트, NPC, 프롤로그/회상/튜토리얼)
+   v1.7.0 — 데이터 주도 설계 & Space 통합 조작 반영
    ========================================================================= */
 
 export const PROLOGUE_SCENES = [
@@ -58,7 +58,7 @@ export const TUTORIAL_STEPS = [
   {
     step: 2,
     title: "튜토리얼 2/4 · 주변 가구 및 인물 정밀 조사",
-    text: "단서는 가구와 공간 속에 숨겨져 있습니다. 사물·인물에 가까이 다가가 [[gold:돋보기 아이콘]]이 뜨면 [[blue:E]] 또는 [[blue:Space]] 키로 조사하세요."
+    text: "단서는 가구와 공간 속에 숨겨져 있습니다. 사물·인물에 가까이 다가가 [[gold:돋보기 아이콘]]이 뜨면 [[blue:[Space]]] 키로 조사하세요."
   },
   {
     step: 3,
@@ -407,6 +407,10 @@ export const ROOMS = {
       { x: 9, y: 3, w: 1, h: 2, color: "#6b2d38", label: "층수 버튼", style: "panel" }
     ],
     hidingSpots: [],
+    specialTiles: [
+      { x: 9, y: 3, type: "elevator_panel" },
+      { x: 9, y: 4, type: "elevator_panel" }
+    ],
     doors: [
       { x: 2, y: 4, to: "1층 복도", tx: 17, ty: 3, label: "내리기" }
     ]
@@ -486,11 +490,105 @@ export const ROOMS = {
       { x: 8, y: 2, w: 1, h: 1, color: "#7c8a99", label: "낡은 거울", style: "mirror" }
     ],
     hidingSpots: [],
+    specialTiles: [
+      { x: 8, y: 2, type: "mirror" }
+    ],
     doors: [
       { x: 1, y: 4, to: "1304호 아이 방", tx: 13, ty: 4, label: "아이 방" }
     ]
   }
 };
+
+export const ELEVATOR_DESTINATIONS = [
+  {
+    id: "elev_1f",
+    label: "1층 복도로 이동",
+    room: "1층 복도",
+    x: 17,
+    y: 3,
+    dir: "left",
+    sfx: "door",
+    speaker: "SYSTEM",
+    speakerClass: "c-system",
+    arrivalText: "엘리베이터 문이 열리고 1층 복도로 나왔다."
+  },
+  {
+    id: "elev_b1",
+    label: "지하 주차장으로 이동",
+    room: "지하 주차장",
+    x: 10,
+    y: 2,
+    dir: "down",
+    sfx: "door",
+    speaker: "SYSTEM",
+    speakerClass: "c-system",
+    arrivalText: "축축한 곰팡이 냄새가 진동하는 지하 주차장에 도착했다."
+  },
+  {
+    id: "elev_13f",
+    label: "붉은 [13층] 버튼을 누른다",
+    room: "13층 복도",
+    x: 2,
+    y: 4,
+    dir: "right",
+    sfx: "ghost",
+    speaker: "강현우",
+    speakerClass: "c-hero",
+    arrivalText: "분명 도면엔 12층까지밖에 없었는데... 복도 형광등이 불안하게 윙윙거리고 있어.",
+    firstVisitFlag: "visited13F",
+    firstVisitSanity: -7,
+    firstVisitSanityReason: "존재하지 않는 13층 진입",
+    firstVisitLog: "엘리베이터가 굉음을 내며 멈추고, 13층 복도가 모습을 드러냈다."
+  }
+];
+
+export const GHOST_EVENTS = [
+  {
+    id: "parking_ghost",
+    room: "지하 주차장",
+    flag: "parkingGhostSeen",
+    requiredClue: "car_memo",
+    minX: 12,
+    spawnX: 18,
+    spawnY: 4,
+    warningText: "지하 주차장 형광등이 지지직거리며 심하게 깜빡이기 시작했다! 콘크리트 기둥이나 기계실 격벽 뒤에 숨거나 1층 계단으로 빠르게 벗어나라 [H]!",
+    chaseText: "형광등이 펑 하고 터지며 정전되었다! 어둠 속에서 13번째 방문자가 발소리를 울리며 다가온다!"
+  },
+  {
+    id: "hall_ghost",
+    room: "13층 복도",
+    flag: "hallGhostSeen",
+    minCollected: 4,
+    minX: 11,
+    maxX: 18,
+    spawnX: 22,
+    spawnY: 4,
+    warningText: "13층 복도의 형광등이 불규칙하게 점멸하며 스파크가 튄다! 서둘러 은신처를 찾거나 구역을 벗어나라 [H]!",
+    chaseText: "복도 조명이 완전히 꺼졌다! 암전 속에서 13번째 방문자가 거친 숨소리와 함께 달려온다!"
+  },
+  {
+    id: "master_ghost",
+    room: "1304호 안방",
+    flag: "masterGhostSeen",
+    requiredClue: "medical",
+    maxX: 6,
+    spawnX: 13,
+    spawnY: 4,
+    warningText: "안방 형광등이 격렬하게 깜빡이기 시작한다! 붙박이장 안에 숨거나 문을 통해 거실로 벗어나라 [H]!",
+    chaseText: "안방 불이 꺼지며 어둠 속에서 13번째 방문자가 솟아올랐다!"
+  },
+  {
+    id: "house_ghost",
+    room: "1304호 거실",
+    flag: "houseGhostSeen",
+    requiredClue: "ledger",
+    preSfx: "knock3",
+    spawnX: 15,
+    spawnY: 4,
+    warningText: "현관 쪽에서 세 번의 노크 소리가 울리더니 거실 형광등이 심하게 깜빡인다! 시야 밖 은신처에 숨거나 복도로 벗어나라 [H]!",
+    chaseText: "거실 불이 완전히 꺼졌다! 정전된 거실로 13번째 방문자가 들이닥쳤다!"
+  }
+];
 
 export const NPCS = [
   { id: "park", name: "박만식", role: "경비원", room: "경비실", x: 4, y: 4, dir: "down" },

@@ -1,5 +1,5 @@
 /* =========================================================================
-   6. UI · 대화창 포트레이트 · 타자기 연출 · 애니메이션 컷신 · 수첩 모듈 (v1.6.0)
+   6. UI · 대화창 포트레이트 · 타자기 연출 · 애니메이션 컷신 · 수첩 모듈 (v1.7.0)
    ========================================================================= */
 import { CLUES, COMBINATIONS, PROPS, TUTORIAL_STEPS } from "./data.js";
 import { UI_CONFIG } from "./config.js";
@@ -207,7 +207,18 @@ export function updateTypewriter(dt) {
 
     if (typewriter.blipCounter >= 3) {
       typewriter.blipCounter = 0;
-      playVoiceBlip(typewriter.speaker);
+      let lastChar = "";
+      for (let k = nextCount - 1; k >= 0; k--) {
+        let seen = 0;
+        for (let tIdx = 0; tIdx < typewriter.tokens.length; tIdx++) {
+          if (typewriter.tokens[tIdx].type === "char") {
+            if (seen === k) { lastChar = typewriter.tokens[tIdx].value; break; }
+            seen++;
+          }
+        }
+        if (lastChar && lastChar.trim()) break;
+      }
+      playVoiceBlip(typewriter.speaker, lastChar);
     }
 
     const el = document.getElementById(typewriter.targetId);
