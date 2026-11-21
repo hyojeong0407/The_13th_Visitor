@@ -320,10 +320,48 @@ export function renderSpeakerPortrait(speakerName) {
   for (let y = 0; y < H; y += 3) pctx.fillRect(0, y, W, 1);
 }
 
+export function closeDialogueBox() {
+  if (state.mode === GAME_MODE.ENDED) return;
+  if (isTypewriterActive("message")) {
+    finishTypewriter();
+  }
+  const overlay = getHudRef("dialogue-overlay");
+  const visualRow = getHudRef("dialogue-visual-row");
+  const chBox = getHudRef("choices");
+  const tutBanner = getHudRef("tutorial-banner");
+
+  if (state.activeChoices.length > 0) {
+    state.activeChoices = [];
+  }
+  if (chBox) {
+    chBox.innerHTML = "";
+  }
+  if (state.mode === GAME_MODE.DIALOGUE) {
+    setGameMode(GAME_MODE.PLAY);
+  }
+  state.dialogueHidden = true;
+  if (visualRow) visualRow.style.display = "none";
+
+  const hasTutorial = tutBanner && tutBanner.style.display !== "none" && tutBanner.style.display !== "";
+  if (overlay && !hasTutorial) {
+    overlay.style.display = "none";
+  }
+}
+
 export function say(speaker, text, speakerClass = "c-system", choices = [], options = {}) {
+  const overlay = getHudRef("dialogue-overlay");
+  const visualRow = getHudRef("dialogue-visual-row");
+  const closeBtn = getHudRef("btn-dialogue-close");
   const sp = getHudRef("speaker");
   const msg = getHudRef("message");
   const chBox = getHudRef("choices");
+
+  state.dialogueHidden = false;
+  if (overlay) overlay.style.display = "block";
+  if (visualRow) visualRow.style.display = "flex";
+  if (closeBtn) {
+    closeBtn.style.display = state.mode === GAME_MODE.ENDED ? "none" : "flex";
+  }
 
   state.lastDialogueImportant = speakerClass !== "c-system" || (Array.isArray(choices) && choices.length > 0);
 
@@ -365,6 +403,9 @@ export function say(speaker, text, speakerClass = "c-system", choices = [], opti
       });
       chBox.appendChild(btn);
     });
+  }
+  if (closeBtn) {
+    closeBtn.style.display = state.mode === GAME_MODE.ENDED ? "none" : "flex";
   }
 }
 
@@ -974,13 +1015,18 @@ export function drawSceneArt(canvasId, artType, t = 0) {
 
 export function renderTutorialBanner() {
   const banner = getHudRef("tutorial-banner");
+  const overlay = getHudRef("dialogue-overlay");
   if (!banner) return;
   if (state.tutorialStep <= 0 || state.tutorialStep > TUTORIAL_STEPS.length || state.flags.tutorialDone) {
     banner.style.display = "none";
+    if (overlay && state.dialogueHidden) {
+      overlay.style.display = "none";
+    }
     return;
   }
   const info = TUTORIAL_STEPS[state.tutorialStep - 1];
   const isLast = state.tutorialStep === TUTORIAL_STEPS.length;
+  if (overlay) overlay.style.display = "block";
   banner.style.display = "block";
   banner.innerHTML = `
     <div class="tutorial-header">

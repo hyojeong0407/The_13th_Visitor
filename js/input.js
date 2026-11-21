@@ -8,7 +8,7 @@ import {
 import { initAudio, toggleSound, playSfx } from "./audio.js";
 import { holdBreathAction } from "./ghost.js";
 import {
-  toggleNotebookDrawer, updateHUD, isTypewriterActive, finishTypewriter
+  toggleNotebookDrawer, updateHUD, isTypewriterActive, finishTypewriter, closeDialogueBox
 } from "./ui.js";
 import { toggleHide } from "./movement.js";
 import {
@@ -35,6 +35,7 @@ export function bindAllInputs(hooks) {
 
   document.getElementById("btn-notebook")?.addEventListener("click", () => toggleNotebookDrawer());
   document.getElementById("btn-drawer-close")?.addEventListener("click", () => toggleNotebookDrawer(false));
+  document.getElementById("btn-dialogue-close")?.addEventListener("click", () => closeDialogueBox());
 
   document.getElementById("btn-act-interact")?.addEventListener("click", () => {
     initAudio();
@@ -78,7 +79,7 @@ export function bindAllInputs(hooks) {
     if (document.hidden) clearHeldInputs();
   });
 
-  const isPrimaryActionKey = code => code === "Space" || code === "KeyE";
+  const isPrimaryActionKey = code => code === "Space";
 
   document.addEventListener("keydown", e => {
     if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
@@ -93,6 +94,11 @@ export function bindAllInputs(hooks) {
       if (state.notebookOpen) { e.preventDefault(); toggleNotebookDrawer(false); return; }
       if (state.mode === GAME_MODE.PROLOGUE) { e.preventDefault(); hooks.finishPrologue(); return; }
       if (state.mode === GAME_MODE.FLASHBACK) { e.preventDefault(); closeMemoryFlashback(); return; }
+      if ((state.mode === GAME_MODE.PLAY || state.mode === GAME_MODE.DIALOGUE) && !state.dialogueHidden) {
+        e.preventDefault();
+        closeDialogueBox();
+        return;
+      }
     }
 
     if (state.mode === GAME_MODE.PROLOGUE) {
@@ -133,7 +139,7 @@ export function bindAllInputs(hooks) {
     initAudio();
     state.keys[e.code] = true;
 
-    // 은신 중 숨 참기 미니게임은 Space(및 보조 E) 통합 액션으로 처리
+    // 은신 중 숨 참기 미니게임은 Space 통합 액션으로 처리
     if (isPrimaryActionKey(e.code) && state.isHiding && state.breathHold.active) {
       if (!e.repeat) holdBreathAction();
       return;

@@ -74,6 +74,7 @@ export const state = {
   activeChoices: [],
   pendingFlashbackKey: null,
   lastDialogueImportant: false,
+  dialogueHidden: false,
 
   isHiding: false,
   currentHidingId: "",

@@ -634,12 +634,6 @@ export function renderGame(ctx, canvas, getBestInteractTargetFn) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  ctx.font = "bold 14px sans-serif";
-  ctx.fillStyle = "#000";
-  ctx.fillText("은하아파트 · " + state.currentRoom, 17, 26);
-  ctx.fillStyle = "#F2D28B";
-  ctx.fillText("은하아파트 · " + state.currentRoom, 16, 25);
-
   if (state.mode === GAME_MODE.ENDED && state.endingType) {
     ctx.fillStyle = "rgba(8, 9, 15, 0.72)";
     ctx.fillRect(120, 125, 400, 110);

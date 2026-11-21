@@ -317,8 +317,33 @@ button:disabled {
   background: rgba(11, 14, 24, 0.9);
   border: 1.5px solid #534e69;
   border-radius: 6px;
-  padding: 10px 14px;
+  padding: 10px 36px 10px 14px;
   backdrop-filter: blur(3px);
+}
+
+.dialogue-close-btn {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1a1f33;
+  color: #b8bdd1;
+  border: 1px solid #534e69;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.dialogue-close-btn:hover {
+  background: #2b3452;
+  color: #ffffff;
+  border-color: #8FC9FF;
 }
 
 #dialogue-visual-row {
