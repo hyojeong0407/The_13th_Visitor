@@ -120,8 +120,9 @@ export function startStep(dx, dy, isSprinting, hooks) {
   state.player.stepParity = 1 - state.player.stepParity;
   playSfx("step");
 
-  if (state.tutorialStep === 1 && hooks.advanceTutorialStep) {
-    hooks.advanceTutorialStep();
+  if (state.tutorialStep === 1) {
+    if (hooks.completeTutorialStep) hooks.completeTutorialStep(1);
+    else if (hooks.advanceTutorialStep) hooks.advanceTutorialStep();
   }
   if (isSprinting) {
     state.stamina = Math.max(0, state.stamina - PLAYER_CONFIG.SPRINT_STEP_COST);

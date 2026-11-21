@@ -22,7 +22,8 @@ import {
   updateHUD, renderInventoryUI,
   renderClueUI, renderTutorialBanner,
   startTypewriter, isTypewriterActive, finishTypewriter, updateTypewriter,
-  startSceneAnimation, stopSceneAnimation, updateSceneAnimation
+  startSceneAnimation, stopSceneAnimation, updateSceneAnimation,
+  updatePortraitAnimation
 } from "./ui.js";
 import { snapCamera, updateCamera, updatePlayerMovement } from "./movement.js";
 import {
@@ -39,8 +40,16 @@ document.querySelectorAll("[data-app-version]").forEach(el => {
   el.textContent = `v${APP_VERSION}`;
 });
 
+function markTutorialStepShown(stepNum) {
+  if (stepNum >= 1 && stepNum <= 4) {
+    state.flags[`tutorialStep${stepNum}Shown`] = true;
+  }
+}
+
 function startTutorialStep(stepNum) {
   if (state.flags.tutorialDone) return;
+  if (stepNum >= 3 && state.flags[`tutorialStep${stepNum}Shown`]) return;
+  markTutorialStepShown(stepNum);
   state.tutorialStep = stepNum;
   renderTutorialBanner();
   bindTutorialButtons();
@@ -56,10 +65,23 @@ function bindTutorialButtons() {
 function advanceTutorialStep() {
   if (state.tutorialStep <= 0) return;
   playSfx("switch");
-  if (state.tutorialStep === 1) {
-    state.tutorialStep = 2;
+  if (state.tutorialStep < 4) {
+    state.tutorialStep += 1;
+    markTutorialStepShown(state.tutorialStep);
     renderTutorialBanner();
     bindTutorialButtons();
+  } else {
+    state.tutorialStep = 0;
+    state.flags.tutorialDone = true;
+    renderTutorialBanner();
+  }
+}
+
+function completeTutorialStep(stepNum) {
+  if (state.tutorialStep !== stepNum) return;
+  markTutorialStepShown(stepNum);
+  if (stepNum === 1) {
+    startTutorialStep(2);
   } else {
     state.tutorialStep = 0;
     renderTutorialBanner();
@@ -273,6 +295,7 @@ const runtimeHooks = {
   changeSanity,
   startTutorialStep,
   advanceTutorialStep,
+  completeTutorialStep,
   startNewGameWithConfirm,
   returnToTitle,
   loadGame,
@@ -291,6 +314,7 @@ function gameLoop(now) {
   updateVisualTimers(dt);
   updateTypewriter(dt);
   updateSceneAnimation(dt);
+  updatePortraitAnimation(dt);
   updateFluorescentHum(dt, state.lightState === "flicker", state.currentLightOn);
 
   if (state.mode === GAME_MODE.PLAY) {

@@ -1,5 +1,5 @@
 /* =========================================================================
-   5. 16비트 픽셀 렌더링 엔진 (오프스크린 스프라이트 캐싱 · 감소 모션 대응) (v1.8.0)
+   5. 16비트 픽셀 렌더링 엔진 (고밀도 도트 리뉴얼 · 오프스크린 캐시 · 감소 모션 대응) (v1.9.0)
    ========================================================================= */
 import { ROOMS, NPCS, PROPS, FIELD_ITEMS } from "./data.js";
 import { TILE, FLICKER_DURATION, SANITY_CONFIG } from "./config.js";
@@ -40,26 +40,53 @@ export function updateVisualTimers(dt) {
 function getBakedRoomBase(roomName, r) {
   const mapW = r.cols * TILE;
   const mapH = r.rows * TILE;
-  const key = `room-base:${roomName}:${r.cols}x${r.rows}`;
+  const isCursed = r.theme === "cursed";
+  const key = `room-base-v2:${roomName}:${r.cols}x${r.rows}:${isCursed ? 1 : 0}`;
 
   return getCachedSprite(key, mapW, mapH, bctx => {
     bctx.fillStyle = r.bg;
     bctx.fillRect(0, 0, mapW, mapH);
 
+    // 바닥 타일 + 16비트 픽셀 질감 및 음영
     for (let y = 1; y < r.rows - 1; y++) {
       for (let x = 1; x < r.cols - 1; x++) {
-        bctx.fillStyle = (x + y) % 2 === 0 ? r.floorA : r.floorB;
-        bctx.fillRect(x * TILE, y * TILE, TILE, TILE);
-        bctx.strokeStyle = "rgba(255,255,255,0.03)";
-        bctx.strokeRect(x * TILE, y * TILE, TILE, TILE);
+        const tx = x * TILE;
+        const ty = y * TILE;
+        const even = (x + y) % 2 === 0;
+        bctx.fillStyle = even ? r.floorA : r.floorB;
+        bctx.fillRect(tx, ty, TILE, TILE);
+
+        // 타일 상단 미세 하이라이트 & 하단 음영
+        bctx.fillStyle = "rgba(255,255,255,0.035)";
+        bctx.fillRect(tx + 1, ty + 1, TILE - 2, 2);
+        bctx.fillStyle = "rgba(0,0,0,0.16)";
+        bctx.fillRect(tx, ty + TILE - 2, TILE, 2);
+        bctx.fillRect(tx + TILE - 1, ty, 1, TILE);
+
+        // 결정론적 미세 스크래치/균열 도트
+        const hash = (x * 37 + y * 91) % 17;
+        if (hash === 3 || (isCursed && hash % 5 === 0)) {
+          bctx.fillStyle = isCursed ? "rgba(180, 48, 72, 0.18)" : "rgba(255, 255, 255, 0.04)";
+          bctx.fillRect(tx + 8 + (hash % 14), ty + 12 + (hash % 10), 6, 2);
+          bctx.fillRect(tx + 12 + (hash % 14), ty + 14 + (hash % 10), 4, 2);
+        }
       }
     }
 
+    // 외벽 + 상단 림 & 걸레받이(baseboard) 디테일
     bctx.fillStyle = r.wall;
     bctx.fillRect(0, 0, mapW, TILE);
     bctx.fillRect(0, (r.rows - 1) * TILE, mapW, TILE);
     bctx.fillRect(0, 0, TILE, mapH);
     bctx.fillRect((r.cols - 1) * TILE, 0, TILE, mapH);
+
+    // 상단 벽면 몰딩 및 걸레받이
+    bctx.fillStyle = "rgba(255,255,255,0.08)";
+    bctx.fillRect(TILE, 4, mapW - TILE * 2, 3);
+    bctx.fillStyle = isCursed ? "#3b1721" : "#111421";
+    bctx.fillRect(TILE, TILE - 6, mapW - TILE * 2, 6);
+    bctx.fillStyle = "rgba(0,0,0,0.45)";
+    bctx.fillRect(TILE, TILE - 1, mapW - TILE * 2, 2);
   });
 }
 
@@ -69,46 +96,87 @@ function drawDetailedFurniture(ctx, f) {
   const w = f.w * TILE;
   const h = f.h * TILE;
   const animPhase = f.style === "cctv" ? (Math.floor(state.elapsedTime * 4) % 2) : 0;
-  const key = `furn:${f.label}:${w}x${h}:${f.color}:${f.style || "default"}:${animPhase}`;
+  const key = `furn-v2:${f.label}:${w}x${h}:${f.color}:${f.style || "default"}:${animPhase}`;
 
-  const sprite = getCachedSprite(key, w, h + 4, bctx => {
-    bctx.fillStyle = "rgba(0,0,0,0.38)";
-    bctx.fillRect(3, h - 2, w - 4, 5);
+  const sprite = getCachedSprite(key, w, h + 5, bctx => {
+    // 접지 그림자
+    bctx.fillStyle = "rgba(0,0,0,0.46)";
+    bctx.fillRect(3, h - 2, w - 4, 6);
 
+    // 본체 & 입체 베벨(상단 하이라이트 / 하단 음영)
     bctx.fillStyle = f.color;
     bctx.fillRect(2, 2, w - 4, h - 4);
-    bctx.fillStyle = "rgba(255,255,255,0.08)";
+    bctx.fillStyle = "rgba(255,255,255,0.12)";
     bctx.fillRect(3, 3, w - 6, 4);
+    bctx.fillStyle = "rgba(0,0,0,0.28)";
+    bctx.fillRect(3, h - 8, w - 6, 4);
 
-    bctx.strokeStyle = "rgba(0,0,0,0.75)";
+    bctx.strokeStyle = "rgba(0,0,0,0.82)";
     bctx.lineWidth = 1.5;
     bctx.strokeRect(2, 2, w - 4, h - 4);
 
     if (f.style === "car") {
-      bctx.fillStyle = "#1c2633";
-      bctx.fillRect(14, 8, w - 28, h - 16);
+      // 순찰차/차량 유리창, 루프 라인, 헤드라이트
+      bctx.fillStyle = "#16202e";
+      bctx.fillRect(14, 7, w - 28, h - 14);
+      bctx.fillStyle = "rgba(143, 201, 255, 0.22)";
+      bctx.fillRect(18, 9, 14, h - 18);
       bctx.fillStyle = "#f2d28b";
-      bctx.fillRect(w - 7, 8, 4, 8);
-      bctx.fillRect(w - 7, h - 16, 4, 8);
+      bctx.fillRect(w - 7, 7, 4, 8);
+      bctx.fillRect(w - 7, h - 15, 4, 8);
+      bctx.fillStyle = "#c94a5a";
+      bctx.fillRect(3, 8, 3, 7);
+      bctx.fillRect(3, h - 15, 3, 7);
     } else if (f.style === "bed") {
-      bctx.fillStyle = "#d9d4e0";
-      bctx.fillRect(6, 8, 18, h - 16);
-      bctx.fillStyle = "rgba(0,0,0,0.22)";
-      bctx.fillRect(28, 4, 3, h - 8);
+      // 침대 베개, 이불 주름, 나무 프레임
+      bctx.fillStyle = "#3a2924";
+      bctx.fillRect(2, 2, 6, h - 4);
+      bctx.fillStyle = "#e6e2ed";
+      bctx.fillRect(9, 7, 16, h - 14);
+      bctx.fillStyle = "rgba(0,0,0,0.24)";
+      bctx.fillRect(28, 3, 3, h - 6);
+      bctx.fillStyle = "rgba(255,255,255,0.07)";
+      bctx.fillRect(34, 8, w - 40, 4);
     } else if (f.style === "cctv") {
-      bctx.fillStyle = animPhase === 0 ? "#4f8c7a" : "#386659";
-      bctx.fillRect(8, 6, 22, 16);
-      bctx.fillRect(36, 6, 22, 16);
+      // 듀얼 CCTV 브라운관 모니터 & 스캔라인
+      const screenCol = animPhase === 0 ? "#4f947f" : "#376b5b";
+      bctx.fillStyle = "#0e131a";
+      bctx.fillRect(6, 5, 25, 19);
+      bctx.fillRect(35, 5, 25, 19);
+      bctx.fillStyle = screenCol;
+      bctx.fillRect(8, 7, 21, 15);
+      bctx.fillRect(37, 7, 21, 15);
+      bctx.fillStyle = "#F09BA8";
+      bctx.fillRect(24, 21, 3, 2);
+      bctx.fillRect(53, 21, 3, 2);
     } else if (f.style === "mirror") {
-      bctx.fillStyle = "#9fb3c7";
-      bctx.fillRect(6, 5, w - 12, h - 10);
-      bctx.fillStyle = "rgba(240, 155, 168, 0.35)";
-      bctx.fillRect(12, 9, 14, 16);
+      // 낡은 거울 테두리, 유리 광택, 균열 및 붉은 기운
+      bctx.fillStyle = "#3b2c25";
+      bctx.fillRect(3, 3, w - 6, h - 6);
+      bctx.fillStyle = "#8ea6bd";
+      bctx.fillRect(6, 6, w - 12, h - 12);
+      bctx.fillStyle = "rgba(255,255,255,0.25)";
+      bctx.fillRect(9, 8, 5, h - 18);
+      bctx.fillStyle = "rgba(240, 155, 168, 0.36)";
+      bctx.fillRect(w / 2 - 6, 9, 12, 16);
+    } else {
+      // 일반 가구(우편함, 책상, 캐비닛 등) 서랍/칸막이 라인
+      if (w >= 72) {
+        const cols = Math.floor(w / 24);
+        bctx.fillStyle = "rgba(0,0,0,0.28)";
+        for (let i = 1; i < cols; i++) {
+          bctx.fillRect(i * 24, 6, 2, h - 12);
+        }
+      }
+      if (h >= 36) {
+        bctx.fillStyle = "rgba(0,0,0,0.24)";
+        bctx.fillRect(6, Math.floor(h / 2), w - 12, 2);
+      }
     }
 
-    bctx.font = "10px sans-serif";
+    bctx.font = "bold 10px sans-serif";
     bctx.textAlign = "center";
-    bctx.fillStyle = "#000";
+    bctx.fillStyle = "rgba(0,0,0,0.9)";
     bctx.fillText(f.label, w / 2 + 1, h / 2 + 4);
     bctx.fillStyle = "#FFFFFF";
     bctx.fillText(f.label, w / 2, h / 2 + 3);
@@ -123,16 +191,22 @@ function drawHidingSpot(ctx, s) {
   const y = s.y * TILE;
   const urgent = state.lightState === "flicker" && !state.isHiding;
   const used = state.hidingUseCount[s.id] || 0;
-  const key = `hide:${urgent ? 1 : 0}:${used >= 2 ? 2 : 0}`;
+  const key = `hide-v2:${urgent ? 1 : 0}:${used >= 2 ? 2 : 0}`;
 
   const sprite = getCachedSprite(key, TILE, TILE + 4, bctx => {
-    bctx.fillStyle = "rgba(0,0,0,0.38)";
-    bctx.fillRect(4, TILE - 2, TILE - 6, 4);
+    bctx.fillStyle = "rgba(0,0,0,0.44)";
+    bctx.fillRect(4, TILE - 2, TILE - 6, 5);
 
-    bctx.fillStyle = urgent ? "#4d4327" : (used >= 2 ? "#4a3338" : "#3a4f48");
+    bctx.fillStyle = urgent ? "#524626" : (used >= 2 ? "#4f3239" : "#354d46");
     bctx.fillRect(4, 4, TILE - 8, TILE - 8);
+    // 캐비닛/기둥 문틈 디테일
+    bctx.fillStyle = "rgba(0,0,0,0.28)";
+    bctx.fillRect(19, 6, 2, TILE - 12);
+    bctx.fillStyle = "rgba(255,255,255,0.1)";
+    bctx.fillRect(6, 6, TILE - 12, 2);
+
     bctx.strokeStyle = urgent ? "#F2D28B" : (used >= 2 ? "#F09BA8" : "#8FC9FF");
-    bctx.lineWidth = urgent ? 2 : 1.2;
+    bctx.lineWidth = urgent ? 2 : 1.3;
     bctx.strokeRect(4, 4, TILE - 8, TILE - 8);
 
     bctx.font = "bold 9px sans-serif";
@@ -158,71 +232,108 @@ function drawPixelHero(ctx, px, py, dir, moving, walkTimer, stepParity) {
     }
   }
 
-  const key = `hero:${dir}:${stride}:${bobY}`;
+  const key = `hero-v2:${dir}:${stride}:${bobY}`;
   const sprite = getCachedSprite(key, TILE, TILE, bctx => {
-    bctx.fillStyle = "rgba(0,0,0,0.48)";
-    bctx.fillRect(9, 33, 22, 5);
+    // 접지 타원형 도트 그림자
+    bctx.fillStyle = "rgba(0,0,0,0.52)";
+    bctx.fillRect(10, 34, 20, 4);
+    bctx.fillRect(12, 33, 16, 6);
     const hy = bobY;
 
     if (dir === "down" || dir === "up") {
       const leftLegY = stride === -1 ? -2 : (stride === 1 ? 1 : 0);
       const rightLegY = stride === 1 ? -2 : (stride === -1 ? 1 : 0);
 
-      bctx.fillStyle = "#181d2b";
-      bctx.fillRect(12, hy + 28 + leftLegY, 6, 7 - Math.max(0, leftLegY));
-      bctx.fillRect(22, hy + 28 + rightLegY, 6, 7 - Math.max(0, rightLegY));
+      // 바지 & 구두
+      bctx.fillStyle = "#151a26";
+      bctx.fillRect(12, hy + 28 + leftLegY, 6, 6 - Math.max(0, leftLegY));
+      bctx.fillRect(22, hy + 28 + rightLegY, 6, 6 - Math.max(0, rightLegY));
+      bctx.fillStyle = "#0b0d14";
+      bctx.fillRect(12, hy + 33 + leftLegY, 6, 2);
+      bctx.fillRect(22, hy + 33 + rightLegY, 6, 2);
 
-      bctx.fillStyle = "#2b4263";
+      // 형사 트렌치/수트 자켓 & 팔 스윙
+      bctx.fillStyle = "#263c5c";
       bctx.fillRect(10, hy + 16, 20, 14);
-      bctx.fillStyle = "#233652";
+      bctx.fillStyle = "#1c2d47";
+      bctx.fillRect(10, hy + 26, 20, 4);
+      bctx.fillStyle = "#213452";
       bctx.fillRect(7, hy + 17 - stride, 3, 10);
       bctx.fillRect(30, hy + 17 + stride, 3, 10);
+      // 손목 커프스/손
+      bctx.fillStyle = "#e8bfa3";
+      bctx.fillRect(7, hy + 26 - stride, 3, 2);
+      bctx.fillRect(30, hy + 26 + stride, 3, 2);
 
       if (dir === "down") {
-        bctx.fillStyle = "#8FC9FF";
-        bctx.fillRect(13, hy + 17, 14, 11);
-        bctx.fillStyle = "#1b283d";
+        // 셔츠 & 넥타이
+        bctx.fillStyle = "#9fd2ff";
+        bctx.fillRect(14, hy + 17, 12, 11);
+        bctx.fillStyle = "#182336";
         bctx.fillRect(19, hy + 17, 2, 10);
+        // 자켓 라펠 음영
+        bctx.fillStyle = "#1a2940";
+        bctx.fillRect(13, hy + 17, 2, 9);
+        bctx.fillRect(25, hy + 17, 2, 9);
 
+        // 얼굴 & 머리카락 하이라이트
         bctx.fillStyle = "#f2cbb0";
         bctx.fillRect(12, hy + 5, 16, 11);
-        bctx.fillStyle = "#191b24";
-        bctx.fillRect(11, hy + 3, 18, 4);
+        bctx.fillStyle = "#d9ad91";
+        bctx.fillRect(12, hy + 14, 16, 2);
+
+        bctx.fillStyle = "#161822";
+        bctx.fillRect(11, hy + 2, 18, 5);
         bctx.fillRect(11, hy + 5, 2, 6);
         bctx.fillRect(27, hy + 5, 2, 6);
+        bctx.fillStyle = "#2b3247";
+        bctx.fillRect(14, hy + 3, 10, 2);
 
+        // 눈 & 눈썹
         bctx.fillStyle = "#0e121c";
         bctx.fillRect(15, hy + 9, 2, 3);
         bctx.fillRect(23, hy + 9, 2, 3);
+        bctx.fillStyle = "#ffffff";
+        bctx.fillRect(15, hy + 9, 1, 1);
+        bctx.fillRect(23, hy + 9, 1, 1);
       } else {
-        bctx.fillStyle = "#1f314a";
-        bctx.fillRect(19, hy + 18, 2, 11);
-        bctx.fillStyle = "#191b24";
-        bctx.fillRect(11, hy + 3, 18, 13);
+        // 뒷모습 (등 솔기 & 뒷머리)
+        bctx.fillStyle = "#1b2b42";
+        bctx.fillRect(19, hy + 17, 2, 12);
+        bctx.fillStyle = "#161822";
+        bctx.fillRect(11, hy + 2, 18, 14);
+        bctx.fillStyle = "#2b3247";
+        bctx.fillRect(14, hy + 4, 12, 2);
       }
     } else {
       const isLeft = dir === "left";
       const frontFootX = stride * 3;
       const backFootX = -stride * 3;
 
-      bctx.fillStyle = "#121621";
+      bctx.fillStyle = "#111520";
       bctx.fillRect(16 + backFootX, hy + 28, 6, 7);
-      bctx.fillStyle = "#1d2333";
+      bctx.fillStyle = "#1c2233";
       bctx.fillRect(16 + frontFootX, hy + 28, 6, 7);
 
-      bctx.fillStyle = "#2b4263";
+      bctx.fillStyle = "#263c5c";
       bctx.fillRect(12, hy + 16, 16, 14);
-      bctx.fillStyle = "#8FC9FF";
+      bctx.fillStyle = "#9fd2ff";
       bctx.fillRect(isLeft ? 12 : 24, hy + 17, 4, 10);
 
-      bctx.fillStyle = "#22344f";
-      bctx.fillRect(17 - stride * 2, hy + 17, 5, 10);
+      // 측면 팔 & 손
+      bctx.fillStyle = "#1e304a";
+      bctx.fillRect(17 - stride * 2, hy + 17, 5, 9);
+      bctx.fillStyle = "#e8bfa3";
+      bctx.fillRect(17 - stride * 2, hy + 26, 5, 2);
 
+      // 측면 두상
       bctx.fillStyle = "#f2cbb0";
       bctx.fillRect(13, hy + 5, 14, 11);
-      bctx.fillStyle = "#191b24";
-      bctx.fillRect(12, hy + 3, 16, 4);
-      bctx.fillRect(isLeft ? 23 : 12, hy + 5, 5, 10);
+      bctx.fillStyle = "#161822";
+      bctx.fillRect(12, hy + 2, 16, 5);
+      bctx.fillRect(isLeft ? 22 : 12, hy + 5, 6, 10);
+      bctx.fillStyle = "#2b3247";
+      bctx.fillRect(15, hy + 3, 9, 2);
 
       bctx.fillStyle = "#0e121c";
       bctx.fillRect(isLeft ? 15 : 23, hy + 9, 2, 3);
@@ -235,59 +346,87 @@ function drawPixelHero(ctx, px, py, dir, moving, walkTimer, stepParity) {
 function drawPixelNPC(ctx, npc) {
   const px = npc.x * TILE;
   const py = npc.y * TILE;
-  const idleBob = state.prefs.reducedMotion ? 0 : (Math.floor(state.elapsedTime * 2.1) % 2);
-  const key = `npc:${npc.id}:${idleBob}`;
+  const idleBob = state.prefs.reducedMotion ? 0 : (Math.floor(state.elapsedTime * 2.2) % 2);
+  const key = `npc-v2:${npc.id}:${idleBob}`;
 
   const sprite = getCachedSprite(key, TILE, TILE, bctx => {
-    bctx.fillStyle = "rgba(0,0,0,0.45)";
-    bctx.fillRect(9, 33, 22, 5);
+    bctx.fillStyle = "rgba(0,0,0,0.48)";
+    bctx.fillRect(10, 34, 20, 4);
+    bctx.fillRect(12, 33, 16, 6);
 
     if (npc.id === "park") {
-      bctx.fillStyle = "#1c2624";
+      // 경비원 박만식: 제복, 금장 뱃지·견장, 제복 모자
+      bctx.fillStyle = "#192422";
       bctx.fillRect(13, 29, 5, 6);
       bctx.fillRect(22, 29, 5, 6);
 
-      bctx.fillStyle = "#3c5954";
+      bctx.fillStyle = "#35544e";
       bctx.fillRect(10, 16 + idleBob, 20, 14);
+      bctx.fillStyle = "#263d39";
+      bctx.fillRect(19, 17 + idleBob, 2, 12);
+      // 금장 명찰 & 견장
       bctx.fillStyle = "#f2d28b";
       bctx.fillRect(13, 19 + idleBob, 4, 2);
+      bctx.fillRect(10, 16 + idleBob, 3, 2);
+      bctx.fillRect(27, 16 + idleBob, 3, 2);
 
       bctx.fillStyle = "#e0b89d";
-      bctx.fillRect(12, 6 + idleBob, 16, 10);
-      bctx.fillStyle = "#263835";
-      bctx.fillRect(10, 3 + idleBob, 20, 4);
+      bctx.fillRect(12, 7 + idleBob, 16, 9);
+      // 제복 모자 & 금장 휘장
+      bctx.fillStyle = "#223330";
+      bctx.fillRect(10, 2 + idleBob, 20, 5);
+      bctx.fillStyle = "#121c1a";
+      bctx.fillRect(9, 6 + idleBob, 22, 2);
+      bctx.fillStyle = "#F2D28B";
+      bctx.fillRect(19, 3 + idleBob, 2, 2);
+
       bctx.fillStyle = "#111";
       bctx.fillRect(15, 10 + idleBob, 2, 2);
       bctx.fillRect(23, 10 + idleBob, 2, 2);
     } else if (npc.id === "han") {
+      // 1204호 주민 한미정: 보라빛 가디건, 긴 웨이브 헤어 하이라이트
       bctx.fillStyle = "#241b24";
       bctx.fillRect(13, 29, 5, 6);
       bctx.fillRect(22, 29, 5, 6);
 
       bctx.fillStyle = "#6e4b6b";
       bctx.fillRect(10, 16 + idleBob, 20, 14);
-      bctx.fillStyle = "#2b1d24";
-      bctx.fillRect(10, 4 + idleBob, 20, 13);
+      bctx.fillStyle = "#8a6286";
+      bctx.fillRect(14, 17 + idleBob, 12, 11);
+
+      bctx.fillStyle = "#291b23";
+      bctx.fillRect(10, 3 + idleBob, 20, 15);
+      bctx.fillStyle = "#422c38";
+      bctx.fillRect(13, 4 + idleBob, 14, 2);
+
       bctx.fillStyle = "#f2cbb0";
       bctx.fillRect(13, 7 + idleBob, 14, 9);
-      bctx.fillStyle = "#111";
+      bctx.fillStyle = "#141013";
       bctx.fillRect(15, 10 + idleBob, 2, 2);
       bctx.fillRect(23, 10 + idleBob, 2, 2);
     } else if (npc.id === "yoonseo") {
+      // 13층의 소녀 윤서: 창백한 원피스 주름, 긴 흑발, 영체 오라
+      bctx.fillStyle = "rgba(143, 201, 255, 0.22)";
+      bctx.fillRect(9, 4 + idleBob, 22, 29);
+
       bctx.fillStyle = "#e6ecf5";
       bctx.fillRect(11, 17 + idleBob, 18, 15);
-      bctx.fillStyle = "#17161c";
-      bctx.fillRect(11, 5 + idleBob, 18, 14);
+      bctx.fillStyle = "#c2cee0";
+      bctx.fillRect(14, 19 + idleBob, 2, 12);
+      bctx.fillRect(24, 19 + idleBob, 2, 12);
+
+      bctx.fillStyle = "#14131a";
+      bctx.fillRect(10, 4 + idleBob, 20, 17);
       bctx.fillStyle = "#f5e6e8";
       bctx.fillRect(14, 8 + idleBob, 12, 8);
-      bctx.fillStyle = "#3b1820";
+      bctx.fillStyle = "#4a1724";
       bctx.fillRect(16, 11 + idleBob, 2, 2);
       bctx.fillRect(22, 11 + idleBob, 2, 2);
     }
   });
 
   if (npc.id === "yoonseo") {
-    const flicker = state.prefs.reducedMotion ? 0.85 : (0.75 + Math.sin(state.elapsedTime * 9.0) * 0.2);
+    const flicker = state.prefs.reducedMotion ? 0.85 : (0.76 + Math.sin(state.elapsedTime * 9.0) * 0.2);
     ctx.save();
     ctx.globalAlpha = flicker;
     drawCachedSprite(ctx, sprite, px, py);
@@ -306,25 +445,59 @@ function drawPixelNPC(ctx, npc) {
 }
 
 function drawPixelGhost(ctx, px, py) {
-  const floatY = state.prefs.reducedMotion ? 0 : Math.sin(state.elapsedTime * 12.0) * 3;
-  const sprite = getCachedSprite("ghost:body", 64, 64, bctx => {
-    bctx.fillStyle = "rgba(240, 155, 168, 0.28)";
+  // 기괴한 프레임 스텝(일부러 끊기는 움직임) & 고개 꺾임 연출
+  const twitchFrame = state.prefs.reducedMotion ? 0 : (Math.floor(state.elapsedTime * 7.5) % 4);
+  const floatY = state.prefs.reducedMotion ? 0 : Math.sin(state.elapsedTime * 11.0) * 2.5;
+  const key = `ghost-v2:${twitchFrame}`;
+
+  const sprite = getCachedSprite(key, 64, 64, bctx => {
+    // 붉은 그림자 오라
+    bctx.fillStyle = "rgba(240, 155, 168, 0.24)";
     bctx.beginPath();
     bctx.arc(32, 32, 26, 0, Math.PI * 2);
     bctx.fill();
 
-    bctx.fillStyle = "#1a0b10";
-    bctx.fillRect(21, 18, 22, 28);
+    // 망토/몸체 실루엣 (너울거리는 하단 옷자락)
+    bctx.fillStyle = "#14070b";
+    bctx.fillRect(20, 19, 24, 27);
     bctx.fillStyle = "#4a1522";
-    bctx.fillRect(23, 28, 18, 16);
+    bctx.fillRect(22, 24, 20, 18);
+    // 너덜거리는 밑단 도트
+    const hemShift = twitchFrame % 2 === 0 ? 0 : 2;
+    bctx.fillStyle = "#14070b";
+    bctx.fillRect(20, 45, 5, 4 - hemShift);
+    bctx.fillRect(29, 45, 6, 2 + hemShift);
+    bctx.fillRect(39, 45, 5, 4 - hemShift);
 
+    // 기괴하게 꺾이는 머리 위치
+    const headShiftX = twitchFrame === 1 ? -3 : (twitchFrame === 3 ? 3 : 0);
+    const headShiftY = twitchFrame === 2 ? 2 : 0;
+    bctx.fillStyle = "#1c090f";
+    bctx.fillRect(22 + headShiftX, 11 + headShiftY, 20, 12);
+
+    // 붉게 번뜩이는 안광
     bctx.fillStyle = "#F09BA8";
-    bctx.fillRect(26, 23, 4, 3);
-    bctx.fillRect(34, 23, 4, 3);
+    bctx.fillRect(25 + headShiftX, 15 + headShiftY, 4, 3);
+    bctx.fillRect(35 + headShiftX, 16 + headShiftY, 4, 2);
+    bctx.fillStyle = "#ffffff";
+    bctx.fillRect(26 + headShiftX, 16 + headShiftY, 1, 1);
+    bctx.fillRect(36 + headShiftX, 16 + headShiftY, 1, 1);
   });
 
+  const baseAlpha = state.ghost.entryDelay > 0 ? 0.55 : 0.95;
+
+  // 추격 중 어두운 붉은 잔상(afterimage) 이펙트
+  if (!state.prefs.reducedMotion && state.ghost.state === GHOST_STATE.CHASE) {
+    const trailOffsetX = Math.cos(state.elapsedTime * 14.0) * 5;
+    const trailOffsetY = Math.sin(state.elapsedTime * 11.0) * 4;
+    ctx.save();
+    ctx.globalAlpha = 0.24;
+    drawCachedSprite(ctx, sprite, px - 12 - trailOffsetX, py - 12 - trailOffsetY + floatY);
+    ctx.restore();
+  }
+
   ctx.save();
-  ctx.globalAlpha = state.ghost.entryDelay > 0 ? 0.55 : 0.94;
+  ctx.globalAlpha = baseAlpha;
   drawCachedSprite(ctx, sprite, px - 12, py - 12 + floatY);
   ctx.restore();
 }

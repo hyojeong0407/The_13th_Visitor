@@ -233,17 +233,85 @@ export function updateTypewriter(dt) {
   }
 }
 
-export function renderSpeakerPortrait(speakerName) {
+const portraitState = {
+  speaker: "SYSTEM",
+  expression: "normal",
+  blinkTimer: 2.6,
+  isBlinking: false
+};
+
+export function inferPortraitExpression(speakerName = "", text = "", speakerClass = "c-system") {
+  const combined = `${speakerName} ${text}`;
+  if (
+    speakerClass === "c-ghost" ||
+    state.ghost.state === GHOST_STATE.CHASE ||
+    state.ghost.state === GHOST_STATE.SEARCH ||
+    /비명|도망|숨을 참|방문자|발각|피|살려|노크 소리|정전|GAME OVER|BAD END/.test(combined)
+  ) {
+    return "fear";
+  }
+  if (/진실|기억|핵심 해석|단서|TRUE END|열렸다|단서 조합/.test(combined)) {
+    return "truth";
+  }
+  if (/미안|엄마|아빠|아들|눈물|슬프|사라진|혼자|무서워|죄송|윤서/.test(combined)) {
+    return "sad";
+  }
+  if (state.sanity <= 55 || state.lightState === "flicker" || /경고|위험|수상|조심|잠겨|불안/.test(combined)) {
+    return "tense";
+  }
+  return "normal";
+}
+
+export function getPortraitState() {
+  return { ...portraitState };
+}
+
+export function updatePortraitAnimation(dt) {
+  if (state.dialogueHidden || state.mode === GAME_MODE.TITLE || state.mode === GAME_MODE.PROLOGUE) return;
+  if (state.prefs.reducedMotion) {
+    if (portraitState.isBlinking) {
+      portraitState.isBlinking = false;
+      renderSpeakerPortrait(portraitState.speaker, { expression: portraitState.expression, preserveBlink: true });
+    }
+    return;
+  }
+
+  portraitState.blinkTimer -= dt;
+  if (!portraitState.isBlinking && portraitState.blinkTimer <= 0) {
+    portraitState.isBlinking = true;
+    portraitState.blinkTimer = 0.13;
+    renderSpeakerPortrait(portraitState.speaker, { expression: portraitState.expression, preserveBlink: true });
+  } else if (portraitState.isBlinking && portraitState.blinkTimer <= 0) {
+    portraitState.isBlinking = false;
+    portraitState.blinkTimer = 2.4 + Math.random() * 2.2;
+    renderSpeakerPortrait(portraitState.speaker, { expression: portraitState.expression, preserveBlink: true });
+  }
+}
+
+export function renderSpeakerPortrait(speakerName, options = {}) {
+  const name = speakerName || "SYSTEM";
+  portraitState.speaker = name;
+  if (options.expression) {
+    portraitState.expression = options.expression;
+  } else if (!options.preserveBlink) {
+    portraitState.expression = inferPortraitExpression(name);
+  }
+  if (!options.preserveBlink) {
+    portraitState.isBlinking = false;
+    portraitState.blinkTimer = 2.5 + Math.random() * 1.8;
+  }
+
   const pCanvas = getHudRef("portrait-canvas");
   const pRole = getHudRef("portrait-role");
   if (!pCanvas || !pRole) return;
 
   const pctx = pCanvas.getContext("2d");
+  if (!pctx) return;
   const W = pCanvas.width;
   const H = pCanvas.height;
+  pctx.imageSmoothingEnabled = false;
   pctx.clearRect(0, 0, W, H);
 
-  const name = speakerName || "";
   let kind = "system";
   let roleLabel = "SYSTEM";
 
@@ -257,59 +325,150 @@ export function renderSpeakerPortrait(speakerName) {
     kind = "clue"; roleLabel = "수사 기록";
   }
 
+  const expr = portraitState.expression;
+  const blinking = portraitState.isBlinking && !state.prefs.reducedMotion;
   pRole.textContent = roleLabel;
 
+  // 표정 및 화자 테마 배경 그라데이션
   const bg = pctx.createLinearGradient(0, 0, 0, H);
-  if (kind === "hero") { bg.addColorStop(0, "#182438"); bg.addColorStop(1, "#0d131f"); }
-  else if (kind === "park") { bg.addColorStop(0, "#1c2b28"); bg.addColorStop(1, "#0f1715"); }
-  else if (kind === "han") { bg.addColorStop(0, "#2b1d2c"); bg.addColorStop(1, "#140d15"); }
-  else if (kind === "yoonseo") { bg.addColorStop(0, "#262333"); bg.addColorStop(1, "#110f17"); }
-  else if (kind === "ghost") { bg.addColorStop(0, "#3b1019"); bg.addColorStop(1, "#140508"); }
-  else if (kind === "clue") { bg.addColorStop(0, "#2e2618"); bg.addColorStop(1, "#14110b"); }
-  else { bg.addColorStop(0, "#1b2030"); bg.addColorStop(1, "#0d1018"); }
+  if (expr === "fear" && kind !== "clue") {
+    bg.addColorStop(0, "#38121d"); bg.addColorStop(1, "#12060a");
+  } else if (kind === "hero") {
+    bg.addColorStop(0, expr === "truth" ? "#1d354f" : "#182438");
+    bg.addColorStop(1, "#0d131f");
+  } else if (kind === "park") {
+    bg.addColorStop(0, "#1c2b28"); bg.addColorStop(1, "#0f1715");
+  } else if (kind === "han") {
+    bg.addColorStop(0, "#2b1d2c"); bg.addColorStop(1, "#140d15");
+  } else if (kind === "yoonseo") {
+    bg.addColorStop(0, "#24283b"); bg.addColorStop(1, "#10121c");
+  } else if (kind === "ghost") {
+    bg.addColorStop(0, "#42111d"); bg.addColorStop(1, "#140508");
+  } else if (kind === "clue") {
+    bg.addColorStop(0, "#332918"); bg.addColorStop(1, "#14110b");
+  } else {
+    bg.addColorStop(0, "#1b2030"); bg.addColorStop(1, "#0d1018");
+  }
   pctx.fillStyle = bg;
   pctx.fillRect(0, 0, W, H);
 
+  // 표정별 눈썹/눈/입 헬퍼
+  const drawFaceFeatures = (eyeY, leftX, rightX, irisColor, mouthY) => {
+    // 눈썹
+    pctx.fillStyle = "#191821";
+    if (expr === "tense" || expr === "truth") {
+      pctx.fillRect(leftX - 1, eyeY - 4, 6, 2);
+      pctx.fillRect(rightX - 1, eyeY - 4, 6, 2);
+      pctx.fillRect(leftX + 3, eyeY - 3, 2, 1);
+      pctx.fillRect(rightX - 1, eyeY - 3, 2, 1);
+    } else if (expr === "fear" || expr === "sad") {
+      pctx.fillRect(leftX - 1, eyeY - 3, 5, 1);
+      pctx.fillRect(leftX + 2, eyeY - 4, 3, 1);
+      pctx.fillRect(rightX, eyeY - 3, 5, 1);
+      pctx.fillRect(rightX - 1, eyeY - 4, 3, 1);
+    } else {
+      pctx.fillRect(leftX - 1, eyeY - 4, 6, 2);
+      pctx.fillRect(rightX - 1, eyeY - 4, 6, 2);
+    }
+
+    // 눈 (깜빡임 vs 표정별 동공)
+    if (blinking) {
+      pctx.fillStyle = "#2b2226";
+      pctx.fillRect(leftX - 1, eyeY + 2, 6, 2);
+      pctx.fillRect(rightX - 1, eyeY + 2, 6, 2);
+    } else {
+      pctx.fillStyle = "#f2f4fa";
+      pctx.fillRect(leftX - 1, eyeY, 6, 4);
+      pctx.fillRect(rightX - 1, eyeY, 6, 4);
+
+      pctx.fillStyle = irisColor;
+      const pupilH = expr === "fear" ? 3 : 4;
+      const pupilW = expr === "fear" ? 2 : 3;
+      pctx.fillRect(leftX + 1, eyeY, pupilW, pupilH);
+      pctx.fillRect(rightX + 1, eyeY, pupilW, pupilH);
+
+      pctx.fillStyle = "#ffffff";
+      pctx.fillRect(leftX + 1, eyeY, 1, 1);
+      pctx.fillRect(rightX + 1, eyeY, 1, 1);
+    }
+
+    // 입
+    pctx.fillStyle = "#9c6858";
+    if (expr === "fear") {
+      pctx.fillStyle = "#4d2329";
+      pctx.fillRect(32, mouthY - 1, 4, 4);
+    } else if (expr === "truth") {
+      pctx.fillRect(31, mouthY, 6, 2);
+      pctx.fillRect(36, mouthY - 1, 2, 1);
+    } else if (expr === "sad" || expr === "tense") {
+      pctx.fillRect(31, mouthY + 1, 6, 1);
+      pctx.fillRect(30, mouthY + 2, 1, 1);
+      pctx.fillRect(37, mouthY + 2, 1, 1);
+    } else {
+      pctx.fillRect(31, mouthY, 6, 2);
+    }
+  };
+
   if (kind === "hero") {
-    pctx.fillStyle = "#263b59"; pctx.fillRect(12, 46, 44, 22);
-    pctx.fillStyle = "#1b2a40"; pctx.fillRect(26, 46, 16, 22);
-    pctx.fillStyle = "#8FC9FF"; pctx.fillRect(29, 47, 10, 14);
+    // 어깨 & 트렌치코트
+    pctx.fillStyle = "#263b59"; pctx.fillRect(11, 46, 46, 22);
+    pctx.fillStyle = "#1a2940"; pctx.fillRect(25, 46, 18, 22);
+    pctx.fillStyle = "#9fd2ff"; pctx.fillRect(29, 47, 10, 14);
     pctx.fillStyle = "#141c2b"; pctx.fillRect(33, 49, 2, 14);
-    pctx.fillStyle = "#d9ad91"; pctx.fillRect(29, 40, 10, 7);
-    pctx.fillStyle = "#f2cbb0"; pctx.fillRect(21, 18, 26, 24);
-    pctx.fillStyle = "#161821";
-    pctx.fillRect(19, 11, 30, 10); pctx.fillRect(19, 18, 4, 15); pctx.fillRect(45, 18, 4, 15);
-    pctx.fillStyle = "#1a1d26"; pctx.fillRect(24, 26, 6, 2); pctx.fillRect(38, 26, 6, 2);
-    pctx.fillStyle = "#0e121c"; pctx.fillRect(26, 29, 3, 4); pctx.fillRect(39, 29, 3, 4);
-    pctx.fillStyle = "#b8826c"; pctx.fillRect(31, 37, 6, 2);
+    // 목 & 턱 음영
+    pctx.fillStyle = "#d4a487"; pctx.fillRect(29, 40, 10, 7);
+    pctx.fillStyle = "#f2cbb0"; pctx.fillRect(21, 18, 26, 23);
+    pctx.fillStyle = "#e0b396"; pctx.fillRect(21, 38, 26, 3);
+    // 머리카락 & 하이라이트
+    pctx.fillStyle = "#151721";
+    pctx.fillRect(19, 10, 30, 10); pctx.fillRect(19, 18, 4, 15); pctx.fillRect(45, 18, 4, 15);
+    pctx.fillStyle = "#2c344a";
+    pctx.fillRect(24, 12, 16, 2);
+    drawFaceFeatures(28, 25, 39, "#0e121c", 36);
+    if (expr === "fear" || expr === "tense") {
+      // 식은땀 도트
+      pctx.fillStyle = "#8FC9FF";
+      pctx.fillRect(43, 22, 2, 4);
+    }
   } else if (kind === "park") {
-    pctx.fillStyle = "#36524d"; pctx.fillRect(12, 47, 44, 21);
-    pctx.fillStyle = "#f2d28b"; pctx.fillRect(15, 48, 8, 3); pctx.fillRect(45, 48, 8, 3);
+    pctx.fillStyle = "#35544e"; pctx.fillRect(11, 47, 46, 21);
+    pctx.fillStyle = "#f2d28b"; pctx.fillRect(14, 48, 8, 3); pctx.fillRect(46, 48, 8, 3);
+    pctx.fillStyle = "#c99e83"; pctx.fillRect(29, 41, 10, 6);
     pctx.fillStyle = "#e0b89d"; pctx.fillRect(21, 20, 26, 22);
-    pctx.fillStyle = "#223330"; pctx.fillRect(18, 11, 32, 9);
-    pctx.fillStyle = "#131c1a"; pctx.fillRect(17, 19, 34, 3);
-    pctx.fillStyle = "#F2D28B"; pctx.fillRect(32, 14, 4, 4);
-    pctx.fillStyle = "#141414"; pctx.fillRect(25, 28, 3, 3); pctx.fillRect(40, 28, 3, 3);
+    // 경비원 제복 모자 & 금장 휘장
+    pctx.fillStyle = "#223330"; pctx.fillRect(17, 10, 34, 9);
+    pctx.fillStyle = "#111a18"; pctx.fillRect(16, 18, 36, 3);
+    pctx.fillStyle = "#F2D28B"; pctx.fillRect(32, 13, 4, 4);
+    drawFaceFeatures(27, 25, 39, "#141414", 36);
   } else if (kind === "han") {
-    pctx.fillStyle = "#6e4b6b"; pctx.fillRect(13, 47, 42, 21);
+    pctx.fillStyle = "#6e4b6b"; pctx.fillRect(12, 47, 44, 21);
+    pctx.fillStyle = "#8a6286"; pctx.fillRect(25, 48, 18, 20);
     pctx.fillStyle = "#f2cbb0"; pctx.fillRect(22, 20, 24, 22);
-    pctx.fillStyle = "#291b23"; pctx.fillRect(18, 12, 32, 10); pctx.fillRect(18, 19, 5, 24); pctx.fillRect(45, 19, 5, 24);
-    pctx.fillStyle = "#181216"; pctx.fillRect(25, 28, 4, 4); pctx.fillRect(39, 28, 4, 4);
+    pctx.fillStyle = "#291b23"; pctx.fillRect(18, 11, 32, 10);
+    pctx.fillRect(18, 19, 5, 25); pctx.fillRect(45, 19, 5, 25);
+    pctx.fillStyle = "#452e3b"; pctx.fillRect(23, 13, 18, 2);
+    drawFaceFeatures(27, 25, 39, "#1c1318", 36);
   } else if (kind === "yoonseo") {
+    // 영체 빛무리
+    pctx.fillStyle = "rgba(143, 201, 255, 0.16)";
+    pctx.beginPath(); pctx.arc(34, 34, 28, 0, Math.PI * 2); pctx.fill();
     pctx.fillStyle = "#dce3ed"; pctx.fillRect(15, 48, 38, 20);
     pctx.fillStyle = "#f5e8ea"; pctx.fillRect(23, 21, 22, 21);
-    pctx.fillStyle = "#14131a"; pctx.fillRect(19, 13, 30, 10); pctx.fillRect(19, 20, 4, 28); pctx.fillRect(45, 20, 4, 28);
-    pctx.fillStyle = "#2e1219"; pctx.fillRect(26, 29, 3, 4); pctx.fillRect(39, 29, 3, 4);
+    pctx.fillStyle = "#14131a"; pctx.fillRect(19, 12, 30, 10);
+    pctx.fillRect(19, 20, 4, 28); pctx.fillRect(45, 20, 4, 28);
+    drawFaceFeatures(28, 26, 39, "#3d1620", 36);
   } else if (kind === "ghost") {
-    pctx.fillStyle = "rgba(240, 155, 168, 0.22)";
-    pctx.beginPath(); pctx.arc(34, 34, 26, 0, Math.PI * 2); pctx.fill();
-    pctx.fillStyle = "#17090d"; pctx.fillRect(16, 14, 36, 48);
-    pctx.fillStyle = "#4a1320"; pctx.fillRect(20, 44, 28, 24);
-    pctx.fillStyle = "#F09BA8"; pctx.fillRect(24, 28, 6, 4); pctx.fillRect(38, 28, 6, 4);
+    pctx.fillStyle = "rgba(240, 155, 168, 0.25)";
+    pctx.beginPath(); pctx.arc(34, 34, 27, 0, Math.PI * 2); pctx.fill();
+    pctx.fillStyle = "#17090d"; pctx.fillRect(16, 13, 36, 50);
+    pctx.fillStyle = "#4a1320"; pctx.fillRect(20, 43, 28, 25);
+    pctx.fillStyle = "#F09BA8"; pctx.fillRect(23, 27, 7, 4); pctx.fillRect(38, 28, 7, 3);
+    pctx.fillStyle = "#ffffff"; pctx.fillRect(25, 28, 2, 2); pctx.fillRect(40, 28, 2, 1);
   } else if (kind === "clue") {
-    pctx.fillStyle = "#5c4938"; pctx.fillRect(16, 16, 28, 36);
-    pctx.fillStyle = "#F2D28B"; pctx.fillRect(19, 19, 22, 30);
-    pctx.fillStyle = "#4a3b2c"; pctx.fillRect(22, 24, 16, 2); pctx.fillRect(22, 29, 14, 2);
+    pctx.fillStyle = "#5c4938"; pctx.fillRect(16, 15, 36, 38);
+    pctx.fillStyle = "#F2D28B"; pctx.fillRect(19, 18, 30, 32);
+    pctx.fillStyle = "#4a3b2c";
+    pctx.fillRect(23, 24, 20, 2); pctx.fillRect(23, 30, 18, 2); pctx.fillRect(23, 36, 14, 2);
   } else {
     pctx.strokeStyle = "#8FC9FF"; pctx.lineWidth = 2; pctx.strokeRect(14, 16, 40, 30);
     pctx.fillStyle = "#F2D28B"; pctx.font = "bold 12px monospace"; pctx.textAlign = "center";
@@ -379,7 +538,8 @@ export function say(speaker, text, speakerClass = "c-system", choices = [], opti
     }
   }
 
-  renderSpeakerPortrait(speaker);
+  const expr = options.expression || inferPortraitExpression(speaker, text, speakerClass);
+  renderSpeakerPortrait(speaker, { expression: expr });
 
   state.activeChoices = Array.isArray(choices) ? choices.slice() : [];
   if (state.activeChoices.length > 0 && state.mode === GAME_MODE.PLAY) {

@@ -324,8 +324,9 @@ export function interact(hooks) {
     return;
   }
 
-  if (state.tutorialStep === 2 && hooks.advanceTutorialStep) {
-    hooks.advanceTutorialStep();
+  if (state.tutorialStep === 2) {
+    if (hooks.completeTutorialStep) hooks.completeTutorialStep(2);
+    else if (hooks.advanceTutorialStep) hooks.advanceTutorialStep();
   }
 
   if (hit.x !== state.player.x || hit.y !== state.player.y) {

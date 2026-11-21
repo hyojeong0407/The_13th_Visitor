@@ -12,9 +12,9 @@ import {
 } from "../js/data.js";
 import { NPC_DIALOGUES } from "../js/dialogueData.js";
 
-describe("게임 데이터 무결성 검증 (v1.8.0)", () => {
+describe("게임 데이터 무결성 검증 (v1.9.0)", () => {
   it("단일 버전 상수가 1.8.0으로 설정되어 있어야 한다", () => {
-    expect(APP_VERSION).toBe("1.8.0");
+    expect(APP_VERSION).toBe("1.9.0");
   });
 
   it("단서(CLUES) 12종과 추리 조합(COMBINATIONS) 7종의 참조가 모두 유효해야 한다", () => {

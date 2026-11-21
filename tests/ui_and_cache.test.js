@@ -5,7 +5,10 @@ import {
   startTypewriter,
   isTypewriterActive,
   updateTypewriter,
-  finishTypewriter
+  finishTypewriter,
+  inferPortraitExpression,
+  renderSpeakerPortrait,
+  getPortraitState
 } from "../js/ui.js";
 import {
   getCachedSprite,
@@ -59,5 +62,13 @@ describe("UI 파서 · 타자기 엔진 · 오프스크린 스프라이트 캐�
     clearSpriteCache("hero:");
     expect(hasCachedSprite("hero:down:0:0")).toBe(false);
     expect(hasCachedSprite("npc:park:0")).toBe(true);
+  });
+
+  it("대화 맥락에 따라 포트레이트 표정(fear, truth, sad, normal)을 정확히 추론해야 한다", () => {
+    expect(inferPortraitExpression("13번째 방문자", "......찾았다!", "c-ghost")).toBe("fear");
+    expect(inferPortraitExpression("강현우", "모든 진실의 조각이 하나로 맞물렸다.", "c-hero")).toBe("truth");
+    expect(inferPortraitExpression("윤서", "엄마 아빠가 너무 보고 싶었어...", "c-npc")).toBe("sad");
+    renderSpeakerPortrait("강현우", { expression: "truth" });
+    expect(getPortraitState().expression).toBe("truth");
   });
 });
